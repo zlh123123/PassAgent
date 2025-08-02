@@ -13,20 +13,28 @@ logger = logging.getLogger(__name__)
 
 
 class PassAgentMCPClient:
-    """PassAgent MCP客户端 - 简化版本"""
+    """PassAgent MCP客户端"""
 
     def __init__(self, server_url: str = None):
         self.server_url = (
             server_url
             or f"http://{settings.mcp_server_host}:{settings.mcp_server_port}"
         )
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = None
         self.available_tools = {}
         self._connected = False
+
+    async def _ensure_client(self):
+        """确保客户端已初始化"""
+        if self.client is None or self.client.is_closed:
+            self.client = httpx.AsyncClient(timeout=30.0)
 
     async def connect(self):
         """连接到MCP服务器"""
         try:
+            # 确保客户端已初始化
+            await self._ensure_client()
+
             # 检查服务器健康状态
             response = await self.client.get(f"{self.server_url}/health")
             if response.status_code == 200:
@@ -42,17 +50,23 @@ class PassAgentMCPClient:
 
     async def disconnect(self):
         """断开连接"""
-        if self.client:
+        if self.client and not self.client.is_closed:
             await self.client.aclose()
             self._connected = False
             logger.info("MCP客户端已断开连接")
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
         """调用指定工具"""
+        print(f"call_tool 被调用了! 工具名: {tool_name}")
+
+        # 确保客户端已初始化
+        await self._ensure_client()
+
         if not self._connected:
             await self.connect()
 
         try:
+            print(f"调用工具: {tool_name} with arguments: {arguments}")
             response = await self.client.post(
                 f"{self.server_url}/tools/{tool_name}",
                 json=arguments,
@@ -71,6 +85,8 @@ class PassAgentMCPClient:
 
         except httpx.RequestError as e:
             logger.error(f"网络请求失败 {tool_name}: {str(e)}")
+            # 重置连接状态，下次调用时重新连接
+            self._connected = False
             raise Exception(f"网络连接失败: {str(e)}")
         except Exception as e:
             logger.error(f"工具调用失败 {tool_name}: {str(e)}")
@@ -123,6 +139,8 @@ class PassAgentMCPClient:
             result = await self.call_tool("classify_intent", {"message": message})
 
             if result.get("status") == "success":
+                print(f"意图分类结果: {result}")
+
                 return {
                     "intent": result.get("intent", "general_chat"),
                     "confidence": result.get("confidence", 0.0),
@@ -151,11 +169,14 @@ class PassAgentMCPClient:
             return {"error": str(e)}
 
     async def __aenter__(self):
-        await self.connect()
+        await self._ensure_client()
+        if not self._connected:
+            await self.connect()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.disconnect()
+        # 保持连接以供复用，不关闭客户端
+        pass
 
 
 # 全局MCP客户端实例

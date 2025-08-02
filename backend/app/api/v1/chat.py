@@ -23,6 +23,8 @@ async def send_message(request: ChatRequest):
             request.conversation_id
         )
 
+        print("获取或创建会话ok")
+
         # 添加用户消息
         user_message = Message(
             role="user",
@@ -31,10 +33,12 @@ async def send_message(request: ChatRequest):
             metadata=request.metadata or {},
         )
         conversation.messages.append(user_message)
+        print("添加用户消息ok")
 
         # 智能工具选择和调用
         response_content = await _generate_intelligent_response(request, conversation)
 
+        print("智能工具选择和调用ok")
         # 添加助手回复
         assistant_message = Message(
             role="assistant", content=response_content, message_type="text"
