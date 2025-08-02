@@ -142,6 +142,12 @@ async def _handle_text_message_with_intent(request: ChatRequest, conversation) -
 
         elif intent == "password_leak_check":
             return await _handle_leak_check_intent(request)
+        
+        elif intent == "security_advice":
+            return await _handle_security_advice_intent(request)
+        
+        elif intent == "password_rule_check":
+            return await _handle_password_rule_check_intent(request)
 
         else:
             # 普通对话
@@ -226,6 +232,23 @@ def _extract_password_from_content(content: str) -> Optional[str]:
 
     return None
 
+async def _handle_security_advice_intent(request: ChatRequest) -> str:
+    """处理安全建议意图"""
+    try:
+        async with mcp_client:
+            return await mcp_client.get_security_advice(request.content)
+    except Exception as e:
+        logger.error(f"获取安全建议失败: {str(e)}")
+        return "安全建议服务暂时不可用，请稍后再试。"
+    
+async def _handle_password_rule_check_intent(request: ChatRequest) -> str:
+    """处理密码规则检查意图"""
+    try:
+        async with mcp_client:
+            return await mcp_client.check_password_rules(request.content)
+    except Exception as e:
+        logger.error(f"获取密码规则失败: {str(e)}")
+        return "密码规则检查服务暂时不可用，请稍后再试。"
 
 def _format_password_analysis(analysis: Dict[str, Any]) -> str:
     """格式化密码分析结果"""
