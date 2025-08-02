@@ -83,7 +83,9 @@ class SecurityAdvisorClient:
 1. 风险评估
 2. 具体建议
 3. 实施步骤
-4. 注意事项"""
+4. 注意事项
+总字数应控制在300字以内，使用清晰的格式增强可读性。
+"""
 
         return [
             {"role": "system", "content": system_prompt},

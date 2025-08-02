@@ -197,6 +197,29 @@ class PassAgentMCPClient:
         except Exception as e:
             logger.error(f"批量密码泄露检测失败: {str(e)}")
             return {"error": str(e)}
+    
+    async def get_security_advice(self, query: str) -> str:
+        """获取安全建议"""
+        try:
+            result = await self.call_tool("get_security_advice", {"query": query})
+            
+            if result.get("status") == "success":
+                advice = result.get("advice", "暂无建议")
+                source = result.get("source", "")
+                note = result.get("note", "")
+                
+                response = f"**💡 安全建议 ({source})**\n\n"
+                if note:
+                    response += f"*{note}*\n\n"
+                response += advice
+                
+                return response
+            else:
+                return f"获取安全建议失败: {result.get('error', '未知错误')}"
+
+        except Exception as e:
+            logger.error(f"获取安全建议失败: {str(e)}")
+            return "安全建议服务暂时不可用，请稍后重试。"
 
     async def __aenter__(self):
         await self._ensure_client()

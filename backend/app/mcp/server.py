@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from app.tools.leak_checker import check_password_leak_tool, batch_check_password_leak_tool
 from app.tools.classify_intent import classify_intent_tool
+from app.tools.security_advice import get_security_advice_tool
 from app.services.password_service import PasswordService
 from app.services.ai_service import AIService
 
@@ -30,6 +31,17 @@ class PassAgentMCPServer:
         @app.get("/health")
         async def health_check():
             return {"status": "healthy", "service": "PassAgent MCP Server"}
+
+        @app.post("/tools/get_security_advice")
+        async def get_security_advice(request: Dict[str, Any]):
+            """获取安全建议"""
+            try:
+                query = request.get("query", "")
+                result = await get_security_advice_tool(query)
+                return result
+            except Exception as e:
+                logger.error(f"获取安全建议失败: {str(e)}")
+                return {"error": str(e), "status": "failed"}
 
         @app.post("/tools/analyze_password_comprehensive")
         async def analyze_password_comprehensive(request: Dict[str, Any]):
@@ -140,7 +152,7 @@ class PassAgentMCPServer:
             except Exception as e:
                 logger.error(f"批量密码分析失败: {str(e)}")
                 return {"error": str(e), "status": "failed"}
-            
+
         @app.post("/tools/check_password_leak")
         async def check_password_leak(request: Dict[str, Any]):
             """检测单个密码泄露"""
@@ -164,8 +176,6 @@ class PassAgentMCPServer:
                 return {"error": str(e), "status": "failed"}
 
         return app
-    
-
 
     async def _classify_user_intent(self, message: str) -> Dict[str, Any]:
         """分类用户意图"""
