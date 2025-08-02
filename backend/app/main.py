@@ -8,7 +8,7 @@ import os
 import asyncio
 
 from app.core.config import settings
-from app.api.v1 import password, chat, upload
+from app.api.v1 import chat, upload
 from app.database.database import create_tables
 
 
@@ -74,7 +74,7 @@ if not os.path.exists("uploads"):
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # 注册API路由
-app.include_router(password.router, prefix="/api/v1/password", tags=["password"])
+
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])
 

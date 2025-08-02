@@ -140,7 +140,7 @@ async def _handle_text_message_with_intent(request: ChatRequest, conversation) -
         elif intent == "password_generation":
             return await _handle_password_generation_intent(request)
 
-        elif intent == "leak_check":
+        elif intent == "password_leak_check":
             return await _handle_leak_check_intent(request)
 
         else:
@@ -190,17 +190,19 @@ async def _handle_password_generation_intent(request: ChatRequest) -> str:
 
 async def _handle_leak_check_intent(request: ChatRequest) -> str:
     """处理泄露检查意图"""
+    print(f"接收到密码泄露检查请求: {request.content}")
     password = _extract_password_from_content(request.content)
     if password:
         try:
             async with mcp_client:
-                analysis = await mcp_client.analyze_password_with_tools(password)
-                leak_info = analysis.get("leak", {})
+                result = await mcp_client.check_password_leak(password)
 
-                if leak_info.get("is_leaked"):
-                    return f"⚠️ **安全警告**: 密码已在 {leak_info.get('leak_count', 0)} 次数据泄露中发现\n\n建议立即更换此密码！"
-                else:
-                    return "✅ **安全检查**: 未发现此密码在已知泄露数据库中，但仍建议定期更换密码。"
+                if result.get("status") == "success":
+                    if result.get("is_leaked"):
+                        leak_count = result.get("leak_count", 0)
+                        return f"⚠️ **安全警告**: 密码已在 {leak_count:,} 次数据泄露中发现\n\n**强烈建议立即更换此密码！**\n\n请检查使用相同密码的其他账户。"
+                    else:
+                        return "✅ **安全检查**: 未发现此密码在已知泄露数据库中，但仍建议定期更换密码。"
         except Exception as e:
             logger.error(f"泄露检查失败: {str(e)}")
             return "泄露检查服务暂时不可用，请稍后再试。"

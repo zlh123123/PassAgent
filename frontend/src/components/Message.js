@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatContent } from '../utils/textUtils';
+import MarkdownRenderer from './MarkdownRenderer';
 
 function Message({ message }) {
   return (
@@ -8,7 +8,11 @@ function Message({ message }) {
         {message.role === 'user' ? '用' : 'P'}
       </div>
       <div className="message-content">
-        <div dangerouslySetInnerHTML={{ __html: formatContent(message.content) }} />
+        {message.role === 'assistant' ? (
+          <MarkdownRenderer content={message.content} />
+        ) : (
+          <div className="user-message-content">{message.content}</div>
+        )}
         {message.role === 'assistant' && (
           <div className="feedback-buttons">
             <button className="feedback-btn thumb-up" title="赞">👍</button>

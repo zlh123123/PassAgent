@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 
-from app.tools.leak_checker import PasswordLeakChecker
+from app.tools.leak_checker import check_password_leak_tool, batch_check_password_leak_tool
 from app.tools.classify_intent import classify_intent_tool
 from app.services.password_service import PasswordService
 from app.services.ai_service import AIService
@@ -140,8 +140,32 @@ class PassAgentMCPServer:
             except Exception as e:
                 logger.error(f"批量密码分析失败: {str(e)}")
                 return {"error": str(e), "status": "failed"}
+            
+        @app.post("/tools/check_password_leak")
+        async def check_password_leak(request: Dict[str, Any]):
+            """检测单个密码泄露"""
+            try:
+                password = request.get("password", "")
+                result = await check_password_leak_tool(password)
+                return result
+            except Exception as e:
+                logger.error(f"密码泄露检测失败: {str(e)}")
+                return {"error": str(e), "status": "failed"}
+
+        @app.post("/tools/batch_check_password_leak")
+        async def batch_check_password_leak(request: Dict[str, Any]):
+            """批量检测密码泄露"""
+            try:
+                passwords = request.get("passwords", [])
+                result = await batch_check_password_leak_tool(passwords)
+                return result
+            except Exception as e:
+                logger.error(f"批量密码泄露检测失败: {str(e)}")
+                return {"error": str(e), "status": "failed"}
 
         return app
+    
+
 
     async def _classify_user_intent(self, message: str) -> Dict[str, Any]:
         """分类用户意图"""

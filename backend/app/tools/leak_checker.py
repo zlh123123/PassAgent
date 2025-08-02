@@ -1,267 +1,123 @@
 """
-Password Leak Detection Tool
-Based on HaveIBeenPwned API and local breach databases
+MCP Tool: 密码泄露检测
+使用 HaveIBeenPwned API 检查密码是否已泄露
 """
-import asyncio
+
 import hashlib
-import aiohttp
-from typing import Dict, List, Optional
-from loguru import logger
+import logging
+from typing import Dict, Any
+import httpx
 
-from app.core.config import settings
-
-
-class PasswordLeakChecker:
-    """Password leak detection service"""
-    
-    def __init__(self):
-        self.api_url = settings.pwned_passwords_api_url
-        self.session = None
-    
-    async def __aenter__(self):
-        """Async context manager entry"""
-        self.session = aiohttp.ClientSession()
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
-        if self.session:
-            await self.session.close()
-    
-    def _hash_password(self, password: str) -> str:
-        """Generate SHA-1 hash of password"""
-        return hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
-    
-    async def check_password_leak(self, password: str) -> Dict[str, any]:
-        """
-        Check if password has been leaked using HaveIBeenPwned API
-        
-        Args:
-            password: Password to check
-            
-        Returns:
-            Dict containing leak status and details
-        """
-        try:
-            # Generate SHA-1 hash
-            sha1_hash = self._hash_password(password)
-            prefix = sha1_hash[:5]
-            suffix = sha1_hash[5:]
-            
-            # Query HaveIBeenPwned API
-            url = f"{self.api_url}{prefix}"
-            
-            if not self.session:
-                self.session = aiohttp.ClientSession()
-            
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    response_text = await response.text()
-                    
-                    # Parse response to find our hash suffix
-                    for line in response_text.splitlines():
-                        if ':' in line:
-                            line_suffix, count = line.split(':', 1)
-                            if line_suffix == suffix:
-                                return {
-                                    "is_leaked": True,
-                                    "leak_count": int(count),
-                                    "breach_sources": ["HaveIBeenPwned"],
-                                    "risk_level": self._calculate_risk_level(int(count)),
-                                    "hash_prefix": prefix
-                                }
-                    
-                    # Not found in leaks
-                    return {
-                        "is_leaked": False,
-                        "leak_count": 0,
-                        "breach_sources": [],
-                        "risk_level": "low",
-                        "hash_prefix": prefix
-                    }
-                
-                elif response.status == 429:
-                    # Rate limited
-                    logger.warning("Rate limited by HaveIBeenPwned API")
-                    return {
-                        "is_leaked": None,
-                        "leak_count": 0,
-                        "breach_sources": [],
-                        "risk_level": "unknown",
-                        "error": "Rate limited",
-                        "hash_prefix": prefix
-                    }
-                
-                else:
-                    logger.error(f"HaveIBeenPwned API returned status {response.status}")
-                    return {
-                        "is_leaked": None,
-                        "leak_count": 0,
-                        "breach_sources": [],
-                        "risk_level": "unknown",
-                        "error": f"API error: {response.status}",
-                        "hash_prefix": prefix
-                    }
-        
-        except Exception as e:
-            logger.error(f"Error checking password leak: {str(e)}")
-            return {
-                "is_leaked": None,
-                "leak_count": 0,
-                "breach_sources": [],
-                "risk_level": "unknown",
-                "error": str(e),
-                "hash_prefix": prefix if 'prefix' in locals() else None
-            }
-    
-    def _calculate_risk_level(self, leak_count: int) -> str:
-        """Calculate risk level based on leak count"""
-        if leak_count == 0:
-            return "low"
-        elif leak_count < 10:
-            return "medium"
-        elif leak_count < 100:
-            return "high"
-        else:
-            return "critical"
-    
-    async def batch_check_passwords(self, passwords: List[str]) -> Dict[str, Dict[str, any]]:
-        """
-        Check multiple passwords for leaks
-        
-        Args:
-            passwords: List of passwords to check
-            
-        Returns:
-            Dict mapping password hashes to leak information
-        """
-        results = {}
-        
-        # Group passwords by SHA-1 prefix to minimize API calls
-        prefix_groups = {}
-        password_map = {}
-        
-        for password in passwords:
-            sha1_hash = self._hash_password(password)
-            prefix = sha1_hash[:5]
-            suffix = sha1_hash[5:]
-            
-            if prefix not in prefix_groups:
-                prefix_groups[prefix] = []
-            
-            prefix_groups[prefix].append(suffix)
-            password_map[suffix] = password
-        
-        # Check each prefix group
-        for prefix, suffixes in prefix_groups.items():
-            try:
-                url = f"{self.api_url}{prefix}"
-                
-                if not self.session:
-                    self.session = aiohttp.ClientSession()
-                
-                async with self.session.get(url) as response:
-                    if response.status == 200:
-                        response_text = await response.text()
-                        
-                        # Parse leaked hashes for this prefix
-                        leaked_hashes = {}
-                        for line in response_text.splitlines():
-                            if ':' in line:
-                                line_suffix, count = line.split(':', 1)
-                                leaked_hashes[line_suffix] = int(count)
-                        
-                        # Check each password in this group
-                        for suffix in suffixes:
-                            password = password_map[suffix]
-                            leak_count = leaked_hashes.get(suffix, 0)
-                            
-                            results[password] = {
-                                "is_leaked": leak_count > 0,
-                                "leak_count": leak_count,
-                                "breach_sources": ["HaveIBeenPwned"] if leak_count > 0 else [],
-                                "risk_level": self._calculate_risk_level(leak_count),
-                                "hash_prefix": prefix
-                            }
-                    
-                    else:
-                        # Handle API errors for this prefix group
-                        for suffix in suffixes:
-                            password = password_map[suffix]
-                            results[password] = {
-                                "is_leaked": None,
-                                "leak_count": 0,
-                                "breach_sources": [],
-                                "risk_level": "unknown",
-                                "error": f"API error: {response.status}",
-                                "hash_prefix": prefix
-                            }
-                
-                # Add delay to respect rate limits
-                await asyncio.sleep(0.1)
-            
-            except Exception as e:
-                logger.error(f"Error checking prefix {prefix}: {str(e)}")
-                for suffix in suffixes:
-                    password = password_map[suffix]
-                    results[password] = {
-                        "is_leaked": None,
-                        "leak_count": 0,
-                        "breach_sources": [],
-                        "risk_level": "unknown",
-                        "error": str(e),
-                        "hash_prefix": prefix
-                    }
-        
-        return results
+logger = logging.getLogger(__name__)
 
 
-# Standalone function for simple usage (compatible with original script)
-async def check_password(password: str) -> bool:
-    """
-    Simple function to check if password is leaked
-    Compatible with the original 泄露检查.py script
-    
-    Args:
-        password: Password to check
-        
-    Returns:
-        True if password is leaked, False otherwise
-    """
-    async with PasswordLeakChecker() as checker:
-        result = await checker.check_password_leak(password)
-        return result.get("is_leaked", False)
+async def check_password_leak_tool(password: str) -> Dict[str, Any]:
+    """MCP Tool: 检测密码是否泄露"""
+    print(f"接收到密码泄露检测请求")  # 调试信息
 
-
-# For backward compatibility with the original script
-def check_password_sync(password: str) -> bool:
-    """Synchronous wrapper for backward compatibility"""
-    import asyncio
-    
     try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    return loop.run_until_complete(check_password(password))
+        if not password:
+            return {"status": "error", "error": "密码不能为空"}
 
+        # 使用 SHA-1 哈希
+        sha1_hash = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+        prefix = sha1_hash[:5]
+        suffix = sha1_hash[5:]
 
-if __name__ == "__main__":
-    # Test the leak checker (compatible with original script)
-    import asyncio
-    
-    async def main():
-        test_password = "asidnfasioff"
-        
-        async with PasswordLeakChecker() as checker:
-            result = await checker.check_password_leak(test_password)
-            
-            if result["is_leaked"]:
-                print(f"密码已泄露！泄露次数: {result['leak_count']}")
-            elif result["is_leaked"] is False:
-                print("密码未在泄露数据库中。")
+        # 调用 HaveIBeenPwned API
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://api.pwnedpasswords.com/range/{prefix}", timeout=10.0
+            )
+
+            if response.status_code != 200:
+                return {
+                    "status": "error",
+                    "error": f"API调用失败: {response.status_code}",
+                }
+
+            # 解析响应
+            leaked_count = 0
+            for line in response.text.splitlines():
+                if line.startswith(suffix):
+                    leaked_count = int(line.split(":")[1])
+                    break
+
+            if leaked_count > 0:
+                return {
+                    "status": "success",
+                    "is_leaked": True,
+                    "leak_count": leaked_count,
+                    "message": f"⚠️ 密码已泄露！在数据泄露中出现了 {leaked_count:,} 次",
+                    "recommendation": "强烈建议立即更换此密码，并检查使用相同密码的其他账户",
+                }
             else:
-                print(f"无法检查密码状态: {result.get('error', 'Unknown error')}")
-    
-    asyncio.run(main())
+                return {
+                    "status": "success",
+                    "is_leaked": False,
+                    "leak_count": 0,
+                    "message": "✅ 密码未在已知泄露数据库中发现",
+                    "recommendation": "密码相对安全，但仍建议使用强密码",
+                }
+
+    except httpx.TimeoutException:
+        logger.error("密码泄露检测超时")
+        return {"status": "error", "error": "网络请求超时，请稍后重试"}
+    except Exception as e:
+        logger.error(f"密码泄露检测失败: {str(e)}")
+        return {"status": "error", "error": f"检测失败: {str(e)}"}
+
+
+async def batch_check_password_leak_tool(passwords: list) -> Dict[str, Any]:
+    """MCP Tool: 批量检测密码泄露"""
+    print(f"接收到批量密码泄露检测请求，数量: {len(passwords)}")
+
+    try:
+        if not passwords:
+            return {"status": "error", "error": "密码列表不能为空"}
+
+        if len(passwords) > 50:  # 限制批量数量
+            return {"status": "error", "error": "批量检测密码数量不能超过50个"}
+
+        results = []
+        for i, password in enumerate(passwords):
+            if not password:
+                results.append(
+                    {
+                        "index": i,
+                        "password": "***",
+                        "status": "error",
+                        "error": "密码为空",
+                    }
+                )
+                continue
+
+            result = await check_password_leak_tool(password)
+            results.append(
+                {
+                    "index": i,
+                    "password": "***",  # 不返回明文密码
+                    "status": result["status"],
+                    "is_leaked": result.get("is_leaked", False),
+                    "leak_count": result.get("leak_count", 0),
+                    "message": result.get("message", ""),
+                    "error": result.get("error"),
+                }
+            )
+
+        # 统计信息
+        leaked_count = sum(1 for r in results if r.get("is_leaked"))
+        safe_count = len(results) - leaked_count
+
+        return {
+            "status": "success",
+            "total_checked": len(passwords),
+            "leaked_passwords": leaked_count,
+            "safe_passwords": safe_count,
+            "results": results,
+            "summary": f"检测完成：{leaked_count} 个密码已泄露，{safe_count} 个密码相对安全",
+        }
+
+    except Exception as e:
+        logger.error(f"批量密码泄露检测失败: {str(e)}")
+        return {"status": "error", "error": f"批量检测失败: {str(e)}"}

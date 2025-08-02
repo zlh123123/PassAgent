@@ -167,6 +167,36 @@ class PassAgentMCPClient:
         except Exception as e:
             logger.error(f"批量分析失败: {str(e)}")
             return {"error": str(e)}
+        
+    async def check_password_leak(self, password: str) -> Dict[str, Any]:
+        """检测密码是否泄露"""
+        try:
+            result = await self.call_tool("check_password_leak", {"password": password})
+            
+            if result.get("status") == "success":
+                print(f"密码泄露检测结果: {result.get('message')}")
+                return result
+            else:
+                return {"error": result.get("error", "泄露检测失败")}
+
+        except Exception as e:
+            logger.error(f"密码泄露检测失败: {str(e)}")
+            return {"error": str(e)}
+
+    async def batch_check_password_leak(self, passwords: List[str]) -> Dict[str, Any]:
+        """批量检测密码泄露"""
+        try:
+            result = await self.call_tool("batch_check_password_leak", {"passwords": passwords})
+            
+            if result.get("status") == "success":
+                print(f"批量泄露检测完成: {result.get('summary')}")
+                return result
+            else:
+                return {"error": result.get("error", "批量泄露检测失败")}
+
+        except Exception as e:
+            logger.error(f"批量密码泄露检测失败: {str(e)}")
+            return {"error": str(e)}
 
     async def __aenter__(self):
         await self._ensure_client()
