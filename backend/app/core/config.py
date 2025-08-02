@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     mcp_server_url: str = Field(default="http://localhost:3001", env="MCP_SERVER_URL")
     mcp_server_port: int = Field(default=3001, env="MCP_SERVER_PORT")
     mcp_server_host: str = Field(default="localhost", env="MCP_SERVER_HOST")
+    mcp_enabled: bool = Field(default=True, env="MCP_ENABLED")
+    mcp_timeout: int = Field(default=30, env="MCP_TIMEOUT")
 
     # Redis - 设为可选
     redis_url: str = Field(default="redis://localhost:6379", env="REDIS_URL")
