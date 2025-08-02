@@ -73,18 +73,19 @@ PassAgent 是一个基于大语言模型(LLM)的智能密码安全助手，旨�
 
 3. **配置环境变量**
    ```bash
-   cp .env.example .env
-   # 编辑 .env 文件，配置API密钥等信息
+   cp .env.example backend/.env
+   # 编辑 .env 文件，配置API密钥等信息，主要需要配置DEEPSEEK API
    ```
 
-4. **初始化数据库**
+4. **前端安装**
    ```bash
-   python scripts/init_database.py
+   cd frontend
+   npm install
    ```
 
 5. **启动应用**
    ```bash
-   python scripts/start_app.py
+   python scripts/start_all.py
    ```
 
 6. **访问应用**
