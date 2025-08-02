@@ -68,6 +68,7 @@ PassAgent 是一个基于大语言模型(LLM)的智能密码安全助手，旨�
 
 2. **安装依赖**
    ```bash
+   # 建议创建虚拟环境，python版本为3.12.0
    pip install -r requirements.txt
    ```
 
