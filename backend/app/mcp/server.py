@@ -12,6 +12,12 @@ from app.tools.leak_checker import check_password_leak_tool, batch_check_passwor
 from app.tools.classify_intent import classify_intent_tool
 from app.tools.security_advice import get_security_advice_tool
 from app.tools.password_extract import extract_passwords_tool
+from app.tools.password_length_check import check_password_length_rules_tool
+from app.tools.password_char_checker import check_password_composition_rules_tool
+from app.tools.og_sp_password_checker import (
+    check_security_standards_compliance_tool,
+    list_available_standards_tool,
+)
 from app.services.password_service import PasswordService
 from app.services.ai_service import AIService
 
@@ -175,7 +181,7 @@ class PassAgentMCPServer:
             except Exception as e:
                 logger.error(f"批量密码泄露检测失败: {str(e)}")
                 return {"error": str(e), "status": "failed"}
-            
+
         @app.post("/tools/extract_passwords")
         async def extract_passwords(request: Dict[str, Any]):
             """提取用户输入中的密码"""
@@ -186,6 +192,69 @@ class PassAgentMCPServer:
                 return result
             except Exception as e:
                 logger.error(f"密码提取失败: {str(e)}")
+                return {"error": str(e), "status": "failed"}
+
+        @app.post("/tools/check_security_standards_compliance")
+        async def check_security_standards_compliance(request: Dict[str, Any]):
+            """检查安全标准合规性"""
+            try:
+                result = await check_security_standards_compliance_tool(
+                    password=request.get("password", ""),
+                    standard_name=request.get("standard_name", "iso27001"),
+                    user_info=request.get("user_info"),
+                    previous_passwords=request.get("previous_passwords"),
+                    account_info=request.get("account_info")
+                )
+                return result
+            except Exception as e:
+                logger.error(f"安全标准合规性检查失败: {str(e)}")
+                return {"error": str(e), "status": "failed"}
+
+        @app.post("/tools/list_available_standards")
+        async def list_available_standards(request: Dict[str, Any]):
+            """列出可用安全标准"""
+            try:
+                result = await list_available_standards_tool()
+                return result
+            except Exception as e:
+                logger.error(f"获取安全标准列表失败: {str(e)}")
+                return {"error": str(e), "status": "failed"}
+
+        @app.post("/tools/check_password_length_rules")
+        async def check_password_length_rules(request: Dict[str, Any]):
+            """检查密码长度规则"""
+            try:
+                result = await check_password_length_rules_tool(
+                    password=request.get("password", ""),
+                    min_length=request.get("min_length", 8),
+                    max_length=request.get("max_length", 128),
+                    recommended_length=request.get("recommended_length", 12),
+                )
+                return result
+            except Exception as e:
+                logger.error(f"密码长度规则检查失败: {str(e)}")
+                return {"error": str(e), "status": "failed"}
+
+        @app.post("/tools/check_password_composition_rules")
+        async def check_password_composition_rules(request: Dict[str, Any]):
+            """检查密码字符组成规则"""
+            try:
+                result = await check_password_composition_rules_tool(
+                    password=request.get("password", ""),
+                    require_uppercase=request.get("require_uppercase", True),
+                    require_lowercase=request.get("require_lowercase", True),
+                    require_digits=request.get("require_digits", True),
+                    require_special=request.get("require_special", True),
+                    min_char_types=request.get("min_char_types", 3),
+                    allowed_special_chars=request.get(
+                        "allowed_special_chars", "!@#$%^&*()_+-=[]{}|;:,.<>?"
+                    ),
+                    forbidden_chars=request.get("forbidden_chars", ""),
+                    require_non_sequential=request.get("require_non_sequential", True),
+                )
+                return result
+            except Exception as e:
+                logger.error(f"密码字符组成规则检查失败: {str(e)}")
                 return {"error": str(e), "status": "failed"}
 
         return app

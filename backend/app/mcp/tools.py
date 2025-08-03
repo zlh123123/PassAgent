@@ -197,6 +197,159 @@ class MCPToolRegistry:
         )
         self.register_tool(password_extract_tool)
 
+        # 密码长度规则检查工具
+        length_rules_tool = MCPTool(
+            name="check_password_length_rules",
+            description="检查密码长度规则合规性",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "password": {"type": "string", "description": "要检查的密码"},
+                    "min_length": {
+                        "type": "integer",
+                        "description": "最小长度",
+                        "default": 8,
+                    },
+                    "max_length": {
+                        "type": "integer",
+                        "description": "最大长度",
+                        "default": 128,
+                    },
+                    "recommended_length": {
+                        "type": "integer",
+                        "description": "推荐长度",
+                        "default": 12,
+                    },
+                },
+                "required": ["password"],
+            },
+            handler=None,
+        )
+        self.register_tool(length_rules_tool)
+
+        # 密码字符组成规则检查工具
+        composition_rules_tool = MCPTool(
+            name="check_password_composition_rules",
+            description="检查密码字符组成规则合规性",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "password": {"type": "string", "description": "要检查的密码"},
+                    "require_uppercase": {
+                        "type": "boolean",
+                        "description": "需要大写字母",
+                        "default": True,
+                    },
+                    "require_lowercase": {
+                        "type": "boolean",
+                        "description": "需要小写字母",
+                        "default": True,
+                    },
+                    "require_digits": {
+                        "type": "boolean",
+                        "description": "需要数字",
+                        "default": True,
+                    },
+                    "require_special": {
+                        "type": "boolean",
+                        "description": "需要特殊字符",
+                        "default": True,
+                    },
+                    "min_char_types": {
+                        "type": "integer",
+                        "description": "最少字符类型数",
+                        "default": 3,
+                    },
+                    "allowed_special_chars": {
+                        "type": "string",
+                        "description": "允许的特殊字符",
+                        "default": "!@#$%^&*()_+-=[]{}|;:,.<>?",
+                    },
+                    "forbidden_chars": {
+                        "type": "string",
+                        "description": "禁止的字符",
+                        "default": "",
+                    },
+                    "require_non_sequential": {
+                        "type": "boolean",
+                        "description": "禁止连续字符",
+                        "default": True,
+                    },
+                },
+                "required": ["password"],
+            },
+            handler=None,
+        )
+        self.register_tool(composition_rules_tool)
+
+        # 安全标准合规性检查工具
+        security_standards_tool = MCPTool(
+            name="check_security_standards_compliance",
+            description="检查密码是否符合国际和国内安全标准",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "password": {"type": "string", "description": "要检查的密码"},
+                    "standard_name": {
+                        "type": "string",
+                        "description": "安全标准名称",
+                        "enum": [
+                            # 国际标准
+                            "iso27001",
+                            "nist_sp800_63b",
+                            "pci_dss",
+                            "hipaa",
+                            "sox",
+                            "gdpr",
+                            "cobit",
+                            "coso",
+                            "ffiec",
+                            "basel_iii",
+                            # 国内标准
+                            "gb_t_25058",
+                            "gb_t_22239",
+                            "djbh",
+                            "yinhangye",
+                            "zhengquanye",
+                            "baoxianye",
+                            "dianzishangwu",
+                        ],
+                        "default": "iso27001",
+                    },
+                    "user_info": {
+                        "type": "object",
+                        "properties": {
+                            "username": {"type": "string"},
+                            "name": {"type": "string"},
+                            "birthdate": {"type": "string"},
+                        },
+                        "description": "用户信息",
+                    },
+                    "previous_passwords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "历史密码列表",
+                    },
+                    "account_info": {"type": "object", "description": "账户信息"},
+                },
+                "required": ["password"],
+            },
+            handler=None,
+        )
+        self.register_tool(security_standards_tool)
+
+        # 列出可用安全标准工具
+        list_standards_tool = MCPTool(
+            name="list_available_standards",
+            description="列出所有可用的安全标准",
+            input_schema={
+                "type": "object",
+                "properties": {},
+            },
+            handler=None,
+        )
+        self.register_tool(list_standards_tool)
+
 
 # 全局工具注册表实例
 tool_registry = MCPToolRegistry()
