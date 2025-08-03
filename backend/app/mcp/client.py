@@ -220,6 +220,25 @@ class PassAgentMCPClient:
         except Exception as e:
             logger.error(f"获取安全建议失败: {str(e)}")
             return "安全建议服务暂时不可用，请稍后重试。"
+        
+    async def extract_passwords(self, user_input: str, intent: str = None) -> Dict[str, Any]:
+        """提取用户输入中的密码"""
+        try:
+            result = await self.call_tool(
+                "extract_passwords", 
+                {"user_input": user_input, "intent": intent}
+            )
+            
+            if result.get("status") == "success":
+                passwords = result.get("passwords", [])
+                print(f"提取到 {len(passwords)} 个密码")
+                return result
+            else:
+                return {"error": result.get("error", "密码提取失败")}
+
+        except Exception as e:
+            logger.error(f"密码提取失败: {str(e)}")
+            return {"error": str(e)}
 
     async def __aenter__(self):
         await self._ensure_client()

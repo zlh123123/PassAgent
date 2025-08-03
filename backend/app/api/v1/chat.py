@@ -166,15 +166,15 @@ async def _handle_text_message_with_intent(request: ChatRequest, conversation) -
 
 async def _handle_password_analysis_intent(request: ChatRequest) -> str:
     """处理密码分析意图"""
-    password = _extract_password_from_content(request.content)
-    if password:
+    passwords = await _extract_passwords_with_mcp(request.content, "password_analysis")
+    if passwords:
         try:
             async with mcp_client:
-                analysis = await mcp_client.analyze_password_with_tools(password)
+                analysis = await mcp_client.analyze_password_with_tools(passwords)
                 return _format_password_analysis(analysis)
         except Exception as e:
             logger.error(f"MCP密码分析失败: {str(e)}")
-            return await ai_service.analyze_password_with_ai(password)
+            return await ai_service.analyze_password_with_ai(passwords)
     else:
         return "请提供要分析的密码。您可以用引号包围密码，例如：分析密码'Password123!'"
 
@@ -197,8 +197,9 @@ async def _handle_password_generation_intent(request: ChatRequest) -> str:
 async def _handle_leak_check_intent(request: ChatRequest) -> str:
     """处理泄露检查意图"""
     print(f"接收到密码泄露检查请求: {request.content}")
-    password = _extract_password_from_content(request.content)
-    if password:
+    passwords = await _extract_passwords_with_mcp(request.content, "password_leak_check")
+    if passwords:
+        password = passwords[0]
         try:
             async with mcp_client:
                 result = await mcp_client.check_password_leak(password)
@@ -216,8 +217,30 @@ async def _handle_leak_check_intent(request: ChatRequest) -> str:
         return "请提供要检查的密码。您可以用引号包围密码，例如：检查密码'Password123!'是否泄露"
 
 
-def _extract_password_from_content(content: str) -> Optional[str]:
-    """从聊天内容中提取密码"""
+async def _extract_passwords_with_mcp(content: str, intent: str) -> List[str]:
+    """使用MCP密码提取工具提取密码"""
+    try:
+        async with mcp_client:
+            result = await mcp_client.extract_passwords(content, intent)
+
+            if result.get("status") == "success":
+                passwords = result.get("passwords", [])
+                logger.info(
+                    f"通过{result.get('method', 'unknown')}方法提取到 {len(passwords)} 个密码"
+                )
+                return passwords
+            else:
+                logger.warning(f"密码提取失败: {result.get('error', 'unknown error')}")
+                return []
+
+    except Exception as e:
+        logger.error(f"MCP密码提取工具调用失败: {str(e)}")
+        # 降级到原有的简单提取方法
+        return _extract_password_from_content_fallback(content)
+
+
+def _extract_password_from_content_fallback(content: str) -> List[str]:
+    """降级的密码提取方法 - 保留原有逻辑作为备份"""
     patterns = [
         r"'([^']+)'",
         r'"([^"]+)"',
@@ -225,12 +248,14 @@ def _extract_password_from_content(content: str) -> Optional[str]:
         r"password\s*[:：]\s*(\S+)",
     ]
 
+    passwords = []
     for pattern in patterns:
-        match = re.search(pattern, content, re.IGNORECASE)
-        if match:
-            return match.group(1)
+        matches = re.findall(pattern, content, re.IGNORECASE)
+        passwords.extend(matches)
 
-    return None
+    # 去重并返回
+    return list(set(passwords)) if passwords else []
+
 
 async def _handle_security_advice_intent(request: ChatRequest) -> str:
     """处理安全建议意图"""
@@ -240,7 +265,7 @@ async def _handle_security_advice_intent(request: ChatRequest) -> str:
     except Exception as e:
         logger.error(f"获取安全建议失败: {str(e)}")
         return "安全建议服务暂时不可用，请稍后再试。"
-    
+
 async def _handle_password_rule_check_intent(request: ChatRequest) -> str:
     """处理密码规则检查意图"""
     try:

@@ -172,6 +172,31 @@ class MCPToolRegistry:
         )
         self.register_tool(batch_tool)
 
+        # 密码提取工具
+        password_extract_tool = MCPTool(
+            name="extract_passwords",
+            description="从用户输入中智能提取密码",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "user_input": {"type": "string", "description": "用户输入的文本"},
+                    "intent": {
+                        "type": "string",
+                        "description": "用户意图",
+                        "enum": [
+                            "password_analysis",
+                            "password_leak_check",
+                            "password_rule_check",
+                        ],
+                        "default": None,
+                    },
+                },
+                "required": ["user_input"],
+            },
+            handler=None,
+        )
+        self.register_tool(password_extract_tool)
+
 
 # 全局工具注册表实例
 tool_registry = MCPToolRegistry()

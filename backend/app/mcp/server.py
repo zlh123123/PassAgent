@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from app.tools.leak_checker import check_password_leak_tool, batch_check_password_leak_tool
 from app.tools.classify_intent import classify_intent_tool
 from app.tools.security_advice import get_security_advice_tool
+from app.tools.password_extract import extract_passwords_tool
 from app.services.password_service import PasswordService
 from app.services.ai_service import AIService
 
@@ -173,6 +174,18 @@ class PassAgentMCPServer:
                 return result
             except Exception as e:
                 logger.error(f"批量密码泄露检测失败: {str(e)}")
+                return {"error": str(e), "status": "failed"}
+            
+        @app.post("/tools/extract_passwords")
+        async def extract_passwords(request: Dict[str, Any]):
+            """提取用户输入中的密码"""
+            try:
+                user_input = request.get("user_input", "")
+                intent = request.get("intent", "")
+                result = await extract_passwords_tool(user_input, intent)
+                return result
+            except Exception as e:
+                logger.error(f"密码提取失败: {str(e)}")
                 return {"error": str(e), "status": "failed"}
 
         return app
