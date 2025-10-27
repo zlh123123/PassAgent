@@ -323,7 +323,6 @@ class PassAgentLauncher:
 
         print("\n✅ 启动完成！")
         print("📡 后端地址: http://localhost:8080")
-        print("📖 API文档: http://localhost:8080/docs")
         print("🌐 前端地址: http://localhost:3000")
         print("\n💡 按 Ctrl+C 停止所有服务")
 
