@@ -87,5 +87,9 @@
 - is_leaked (是否泄露)
 - analysis_type (transformation/strength/recommendation)
 - created_at
+- 这张表格打算根据不同analysis_type，提供对应不同的metadata进行说明
 
 
+# 后端
+
+MCP这块要改用langgraph框架，需要更新后端文件架构
