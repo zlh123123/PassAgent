@@ -10,7 +10,7 @@
 [![MCP](https://img.shields.io/badge/MCP-Protocol-orange.svg?style=flat&logo=anthropic)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-*一个集成多种AI技术的密码安全分析与推荐系统*
+*一个集成多种AI技术的全方位密码安全分析与智能推荐系统*
 
 [功能特性](#功能特性) • [快速开始](#快速开始) • [项目架构](#项目架构) • [开发指南](#开发指南)
 
