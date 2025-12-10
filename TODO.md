@@ -24,7 +24,6 @@
 ## 主界面
 - [ ] 欢迎使用 PassAgent🤗改成Logo+名称
 - [ ] 上传文件功能在输入聊天框时要显示
-- [ ] 右上角添加私密模式选项，该选项进入后界面颜色改变，并使用本地模型
 
 ## 对话界面
 - [ ] 主要是要展示运行顺序
@@ -51,7 +50,6 @@
 - session_id (主键)
 - user_id (外键 → users)
 - title (会话标题)，这一步可以通过LLM做
-- is_private (是否私密模式)
 - created_at
 - updated_at
 4. messages（消息表）
