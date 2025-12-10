@@ -148,7 +148,7 @@ GRAPHICAL_MODE (图形口令 - 独立入口)
 graph TD
     %% --- 用户层 ---
     User((用户))
-    Browser[前端 (Next.js)]
+    Browser[前端]
     
     %% --- 接入层 (Docker Container: Frontend) ---
     subgraph "Frontend Container (Port 3000)"
@@ -181,7 +181,7 @@ graph TD
             DBNode[数据库写入节点]
         end
         
-        SQLite[(SQLite DB)]
+        SQLite[SQLite DB]
     end
 
     %% --- 模型服务层 (Docker Container: Security Service) ---
@@ -192,7 +192,7 @@ graph TD
 
     %% --- 大模型服务层 (Docker Container: LLM Service) ---
     subgraph "LLM Service Container (GPU: 60%)"
-        Qwen[Qwen2.5-7B (vLLM)]
+        Qwen[Qwen2.5-7B vLLM]
     end
 
     %% --- 数据流向 ---
