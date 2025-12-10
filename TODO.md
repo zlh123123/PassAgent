@@ -91,3 +91,142 @@
 # 后端
 
 MCP这块要改用langgraph框架，需要更新后端文件架构
+
+# 5个需求
+
+🛡️ Agent 功能需求清单 (User-Facing Features) v2.0
+1. 口令强度评估 (Strength Assessment)
+含义： 用户提供一个现有的文本口令，Agent 分析其安全性。
+用户输入示例：
+“帮我看看 123456 安全吗？”
+“测试一下我的密码强度。”
+Agent 行为： 计算熵值、检查字符组合、匹配常见弱口令列表，给出评分（弱/中/强）及改进建议。
+主要4个功能：zxcvbn（熵值）、PCFG（结构分析）、passgpt（概率）、LLM（口令重用）
+2. 口令生成与推荐 (Password Generation)
+含义： 用户需要一个新的、安全的文本口令。支持多种输入形式作为“种子”，生成既安全又包含用户个性化信息的口令。
+输入形式支持：
+纯文本助记符： 用户直接输入关键词（如“zly”, “2023”）。
+多模态信息（图片/音频）： 用户上传图片（如宠物照、风景照）或音频（如一段话、环境音）。
+用户输入示例：
+“我要注册一个新账号，帮我生成个密码。”
+“用这张猫的照片帮我生成一个密码。”（上传图片）
+“根据这段录音生成一个口令。”（上传音频）
+“我要注册 GitHub，帮我生成一个符合要求的密码。”（触发隐式爬虫/规则库）
+Agent 行为：
+多模态解析： 调用 Qwen2-Audio / Qwen2-VL (或 Qwen-Omni) 模型，将图片/音频内容转换为文本描述（如图片 -> "cat_sleeping_sofa"，音频 -> "hello_world"）。
+生成逻辑： 将解析出的文本或用户输入的文本作为助记词，通过变换大小写、插入特殊符号、乱序等方式增强安全性。
+合规适配： 如果识别到目标网站，自动加载该网站的密码策略进行适配。
+3. 模糊记忆恢复 (Memory Recovery)
+含义： 用户忘记了旧密码，但记得一些片段。Agent 帮助用户“拼凑”出可能的密码列表，而不是生成新密码。
+用户输入示例：
+“我忘了旧密码，只记得里面有 zly 和 2023。”
+“帮我找回密码，好像是 admin 开头，后面是个年份。”
+Agent 行为： 基于用户提供的片段，进行排列组合（不随意添加随机字符），生成一份“可能的密码候选列表”供用户尝试。
+4. 口令泄露检查 (Leak Check)
+含义： 检查用户的口令或账号是否出现在已知的互联网数据泄露事件中（基于 HIBP 等库）。
+用户输入示例：
+“查一下 password123 有没有泄露过。”
+“我的邮箱 test@example.com 安全吗？”
+Agent 行为： 查询泄露数据库，返回泄露次数或安全状态。
+5. 图形口令设置 (Graphical Password) [独立模式]
+含义： 提供一种非文本的口令设置方式，允许用户通过在图片或地图上选点来作为凭证（不涉及文本转换，位置即密码）。
+用户输入示例：
+“我想设置一个图形密码。”
+“启动地图口令模式。”
+“我想用图片做密码。”
+Agent 行为： 识别到该意图后，唤起前端的图形交互组件（弹窗或 Webview），引导用户进行选点操作。
+📝 意图分类标签更新
+STRENGTH_CHECK (强度评估)
+GENERATION (生成推荐 - 支持 文本/图片/音频 输入)
+RECOVERY (记忆恢复)
+LEAK_CHECK (泄露检查)
+GRAPHICAL_MODE (图形口令 - 独立入口)
+
+# 整体的流程
+
+```mermaid
+graph TD
+    %% --- 用户层 ---
+    User((用户))
+    Browser[前端 (Next.js)]
+    
+    %% --- 接入层 (Docker Container: Frontend) ---
+    subgraph "Frontend Container (Port 3000)"
+        NextServer[Next.js Server]
+    end
+
+    %% --- 核心逻辑层 (Docker Container: Backend) ---
+    subgraph "Backend Container (Port 8080)"
+        FastAPI[FastAPI Router]
+        
+        subgraph "LangGraph Agent (MCP)"
+            RouterNode{意图路由}
+            
+            subgraph "强度评估流 (Strength)"
+                EvalNode[评估节点]
+                ZxcvbnTool[Zxcvbn 工具]
+            end
+            
+            subgraph "口令推荐流 (Recommendation)"
+                GenNode[生成节点]
+                HumanWait((等待用户选择))
+                RecEvalNode[推荐评估节点]
+            end
+            
+            subgraph "重用分析流 (Transformation)"
+                ReuseNode[重用分析节点]
+            end
+            
+            ReportNode[报告生成节点]
+            DBNode[数据库写入节点]
+        end
+        
+        SQLite[(SQLite DB)]
+    end
+
+    %% --- 模型服务层 (Docker Container: Security Service) ---
+    subgraph "Security Service Container (GPU: 20%)"
+        PassGPT[PassGPT API]
+        ReuseModel[Reuse Model API]
+    end
+
+    %% --- 大模型服务层 (Docker Container: LLM Service) ---
+    subgraph "LLM Service Container (GPU: 60%)"
+        Qwen[Qwen2.5-7B (vLLM)]
+    end
+
+    %% --- 数据流向 ---
+    User <--> Browser
+    Browser -- "1. SSE流式请求 (/api/chat)" --> NextServer
+    NextServer -- "2. 代理转发" --> FastAPI
+    
+    FastAPI --> RouterNode
+    
+    %% 路由逻辑
+    RouterNode -- "评估" --> EvalNode
+    RouterNode -- "推荐" --> GenNode
+    RouterNode -- "重用" --> ReuseNode
+    
+    %% 工具调用
+    EvalNode --> ZxcvbnTool
+    EvalNode -- "HTTP" --> PassGPT
+    ReuseNode -- "HTTP" --> ReuseModel
+    
+    %% 推荐交互
+    GenNode --> HumanWait
+    HumanWait -- "用户选择" --> RecEvalNode
+    RecEvalNode --> ZxcvbnTool
+    
+    %% 报告生成 (调用大模型)
+    EvalNode & RecEvalNode & ReuseNode --> ReportNode
+    ReportNode -- "HTTP (Prompt)" --> Qwen
+    
+    %% 结果持久化
+    ReportNode --> DBNode
+    DBNode -- "SQL Insert" --> SQLite
+    
+    %% 返回
+    DBNode --> FastAPI
+    FastAPI -- "SSE Event Stream" --> Browser
+
+```
