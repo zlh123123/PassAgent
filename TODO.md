@@ -94,6 +94,10 @@ MCP这块要改用langgraph框架，需要更新后端文件架构
 
 # 5个需求
 需求分类：BERT-wwm-ext (Whole Word Masking) 或 RoBERTa-wwm-ext
+
+https://huggingface.co/hfl/chinese-roberta-wwm-ext
+https://github.com/ymcui/Chinese-BERT-wwm
+
 🛡️ Agent 功能需求清单 (User-Facing Features) v2.0
 1. 口令强度评估 (Strength Assessment)
 含义： 用户提供一个现有的文本口令，Agent 分析其安全性。
