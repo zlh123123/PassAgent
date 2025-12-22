@@ -12,5 +12,6 @@
 + 训练采用的提示词（针对Qwen3 1.7b），要补充
 + 撞库实验，验证即使多口令也有用，要补充
 + 如果有空再补一个跨站攻击，不过不必须
++ 或许还有不同生成方式的影响？
 + 对了还有其他模型的对比，目前能做的是Pass2path、Targauss/PCFG?OMEN? or passgpt https://github.com/javirandor/passgpt
 
