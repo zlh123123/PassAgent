@@ -198,6 +198,7 @@ GRAPHICAL_MODE (图形口令 - 独立入口)
 
 # 整体的流程
 
+```mermaid
 graph TD
     %% --- 样式定义 ---
     classDef user fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
@@ -256,6 +257,8 @@ graph TD
     
     %% 7. 最终反馈
     Response -- "流式输出" --> User
+```
+
 ---
 
 不同推理参数：beam search没有topk、tem这些参数
