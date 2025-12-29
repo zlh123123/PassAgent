@@ -87,6 +87,28 @@
 - created_at
 - 这张表格打算根据不同analysis_type，提供对应不同的metadata进行说明
 
+8. user_memories (用户记忆表)
+
+memory_id (主键)
+
+user_id (外键 → users)
+
+content (文本内容): 例如 "宠物是一只名叫旺财的狗", "喜欢使用特殊符号 # 和 @", "生日是 1995年"
+
+memory_type (枚举):
+
++ PREFERENCE: 偏好（如：喜欢强密码、不喜欢包含 'l' 和 '1'）
+
++ FACT: 事实/背景（如：公司名、宠物名、纪念日）
+
++ CONSTRAINT: 约束（如：密码长度通常设为16位）
+
+embedding (向量数据, Blob/Array): 用于语义匹配 (Optional, 推荐)
+
+created_at: 创建时间
+
+last_accessed_at: 最后一次被调用的时间（用于LRU或权重计算）
+
 
 # 后端
 
@@ -147,94 +169,94 @@ RECOVERY (记忆恢复)
 LEAK_CHECK (泄露检查)
 GRAPHICAL_MODE (图形口令 - 独立入口)
 
+# 这里还需要加一个记忆模块
+
+这里估计要另外设计一张表，就负责保存用户偏好，然后就除了用户输入的原始密码不能存之外其他都可以存
+
+在对用户进行回复的时候要考虑一下用户的输出和记忆模块中的东西
+
+对于记忆写入，基本上就是对于口令推荐和模糊记忆恢复这两个功能；剩下三个功能用户只需要提供待处理的口令即可，这些口令不写入记忆
+
+对于记忆读取，就是作为口令推荐和模糊记忆恢复这两个功能的第一步：
+
+调用策略：
+
+全量检索 (针对全局偏好)： 总是拉取 memory_type = PREFERENCE 的最近几条记录（例如：“用户不喜欢用问号”）。
+
+语义检索 (针对特定任务)：
+
+当进入 口令生成 (Generation) 或 记忆恢复 (Recovery) 模式时。
+
+使用用户的当前 Query 生成向量，去 user_memories 中检索 Top-K 最相关的事实。
+
+例子： 用户输入 "帮我生成一个包含我女儿名字的密码"。
+
+检索： 检索到记忆 "女儿的名字叫 Alice"。
+
+
+最后有关这个模块也可以给用户提供自定义，就像gemini的记忆功能一样，用户输入自己的句子即可+
+
 # 整体的流程
 
-```mermaid
 graph TD
-    %% --- 用户层 ---
-    User((用户))
-    Browser[前端]
+    %% --- 样式定义 ---
+    classDef user fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef brain fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    classDef memory fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef action fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
     
-    %% --- 接入层 (Docker Container: Frontend) ---
-    subgraph "Frontend Container (Port 3000)"
-        NextServer[Next.js Server]
+    %% --- 角色 ---
+    User((👤 用户)):::user
+    
+    %% --- 核心大脑 ---
+    subgraph Agent_Brain [🤖 PassAgent 核心大脑]
+        direction TB
+        Intent[1. 意图识别 &<br>关键词提取]:::brain
+        Logic[2. 逻辑分发 &<br>参数组装]:::brain
+        Response[4. 结果整合 &<br>回复生成]:::brain
     end
 
-    %% --- 核心逻辑层 (Docker Container: Backend) ---
-    subgraph "Backend Container (Port 8080)"
-        FastAPI[FastAPI Router]
-        
-        subgraph "LangGraph Agent (MCP)"
-            RouterNode{意图路由}
-            
-            subgraph "强度评估流 (Strength)"
-                EvalNode[评估节点]
-                ZxcvbnTool[Zxcvbn 工具]
-            end
-            
-            subgraph "口令推荐流 (Recommendation)"
-                GenNode[生成节点]
-                HumanWait((等待用户选择))
-                RecEvalNode[推荐评估节点]
-            end
-            
-            subgraph "重用分析流 (Transformation)"
-                ReuseNode[重用分析节点]
-            end
-            
-            ReportNode[报告生成节点]
-            DBNode[数据库写入节点]
-        end
-        
-        SQLite[SQLite DB]
+    %% --- 记忆模块 ---
+    subgraph Memory_System [🧠 记忆系统]
+        MemDB[(长期记忆库<br>User Preferences<br>& Facts)]:::memory
+        MemRead{读取记忆}:::memory
+        MemWrite{写入/更新记忆}:::memory
     end
 
-    %% --- 模型服务层 (Docker Container: Security Service) ---
-    subgraph "Security Service Container (GPU: 20%)"
-        PassGPT[PassGPT API]
-        ReuseModel[Reuse Model API]
+    %% --- 功能执行层 ---
+    subgraph Capabilities [🛠️ 功能执行层]
+        Strength[🛡️ 强度评估]:::action
+        Gen[🔑 口令生成]:::action
+        Recover[🧩 记忆恢复]:::action
+        Leak[⚠️ 泄露检查]:::action
+        Graph[🎨 图形口令]:::action
     end
 
-    %% --- 大模型服务层 (Docker Container: LLM Service) ---
-    subgraph "LLM Service Container (GPU: 60%)"
-        Qwen[Qwen2.5-7B vLLM]
-    end
-
-    %% --- 数据流向 ---
-    User <--> Browser
-    Browser -- "1. SSE流式请求 (/api/chat)" --> NextServer
-    NextServer -- "2. 代理转发" --> FastAPI
+    %% --- 流程连线 ---
     
-    FastAPI --> RouterNode
+    %% 1. 输入与理解
+    User -- "输入指令/文件" --> Intent
     
-    %% 路由逻辑
-    RouterNode -- "评估" --> EvalNode
-    RouterNode -- "推荐" --> GenNode
-    RouterNode -- "重用" --> ReuseNode
+    %% 2. 记忆读取 (辅助理解和参数补充)
+    MemDB -.-> MemRead
+    MemRead -- "检索偏好/背景" --> Intent
     
-    %% 工具调用
-    EvalNode --> ZxcvbnTool
-    EvalNode -- "HTTP" --> PassGPT
-    ReuseNode -- "HTTP" --> ReuseModel
+    %% 3. 逻辑分发 (将 提取的参数 + 记忆上下文 传给工具)
+    Intent --> Logic
     
-    %% 推荐交互
-    GenNode --> HumanWait
-    HumanWait -- "用户选择" --> RecEvalNode
-    RecEvalNode --> ZxcvbnTool
+    %% 4. 执行具体功能
+    Logic -- "分发任务" --> Strength & Gen & Recover & Leak & Graph
     
-    %% 报告生成 (调用大模型)
-    EvalNode & RecEvalNode & ReuseNode --> ReportNode
-    ReportNode -- "HTTP (Prompt)" --> Qwen
+    %% 5. 结果返回
+    Strength & Gen & Recover & Leak & Graph --> Response
     
-    %% 结果持久化
-    ReportNode --> DBNode
-    DBNode -- "SQL Insert" --> SQLite
+    %% 6. 记忆写入 (关键步骤：复用提取的信息)
+    Intent -- "提取到的新事实<br>(非敏感信息)" --> MemWrite
+    MemWrite -.-> MemDB
     
-    %% 返回
-    DBNode --> FastAPI
-    FastAPI -- "SSE Event Stream" --> Browser
-
-```
+    %% 7. 最终反馈
+    Response -- "流式输出" --> User
+---
 
 不同推理参数：beam search没有topk、tem这些参数
 
