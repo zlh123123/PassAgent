@@ -1,0 +1,14 @@
+[project]
+name = "passagent-backend"
+version = "0.1.0"
+description = "PassAgent backend service"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "pydantic",
+    "pillow",
+    "zxcvbn",
+    "httpx",
+    "langgraph>=1.0.8",
+]

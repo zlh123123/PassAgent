@@ -1,0 +1,3 @@
+[submodule "models_deploy/vllm-omni"]
+	path = models_deploy/vllm-omni
+	url = https://github.com/vllm-project/vllm-omni.git
