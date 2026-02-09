@@ -523,3 +523,36 @@ B: 嗯，好的好的。
 A: 嗯，好，行，别的就没啥了，那就先这样。
 B: 行，那学校再见啊。
 A: 嗯，哎好嘞，拜拜。
+
+
+Subject: Request for Access to RMDC Password Vault Dataset (Zenodo Record 15646753)
+
+Dear Dr. Cheng,
+
+I hope this email finds you well. My name is Zhang Linghao, and I am a master's student at Shanghai Jiao Tong University, working under the supervision of Prof. [导师名字] in the area of password security.
+
+I am writing to request access to the RMDC password vault dataset published on Zenodo (Record 15646753), which accompanies your USENIX Security 2025 paper "Practically Secure Honey Password Vaults."
+
+We are currently conducting research on password reuse behavior and transformation rule generation. Your dataset would be invaluable for our experiments, as it provides well-structured multi-password vault data that enables fair comparison with recent work in this area.
+
+We confirm that the dataset will be used solely for academic research purposes and will be handled in strict compliance with ethical guidelines. Access will be restricted to the members of our research group, and no raw password data will appear in any publication.
+
+I have submitted an access request on Zenodo using the following email address: zhanglinghao@sjtu.edu.cn. I would be grateful if you could approve the request at your convenience.
+
+I would be happy to provide any additional information required for the ethics-compliance review. Please find my institutional details below:
+
+Name: Zhang Linghao
+Affiliation: [学院全称], Shanghai Jiao Tong University
+Email: zhanglinghao@sjtu.edu.cn
+Supervisor: Prof. [导师名字]
+Thank you very much for your time and consideration. I look forward to hearing from you.
+
+Best regards,
+
+Zhang Linghao
+[学院全称]
+Shanghai Jiao Tong University
+zhanglinghao@sjtu.edu.cn
+
+https://link.springer.com/chapter/10.1007/978-3-032-07894-0_12
+https://zenodo.org/records/15646753
