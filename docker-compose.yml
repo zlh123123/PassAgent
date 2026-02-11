@@ -1,0 +1,46 @@
+# PassAgent Docker Compose
+# 启动: docker-compose up -d
+
+services:
+  # FastAPI 后端 + LangGraph Agent (Port 8000)
+  backend:
+    # build: ./backend
+    # ports:
+    #   - "8000:8000"
+    # env_file:
+    #   - ./backend/.env
+    # volumes:
+    #   - ./backend/uploads:/app/uploads
+    #   - ./backend/data:/app/data
+    #   - sqlite-data:/app/db
+    # depends_on:
+    #   - model_service
+
+  # Next.js 前端 (Port 3000)
+  frontend:
+    # build: ./frontend
+    # ports:
+    #   - "3000:3000"
+    # env_file:
+    #   - ./frontend/.env.local
+    # depends_on:
+    #   - backend
+
+  # vLLM 模型推理服务 (Port 8080)
+  # GPU 容器: Qwen2.5-7B (4bit) 常驻, Qwen-1.7B 微调 (4bit) 常驻, Qwen-Omni-7B (4bit) 按需
+  model_service:
+    # build: ./model_service
+    # ports:
+    #   - "8080:8080"
+    # volumes:
+    #   - ./model_service/models:/app/models
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+# volumes:
+#   sqlite-data:

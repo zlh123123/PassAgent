@@ -1,4 +1,4 @@
-# PassAgent - 基于LLM的密码安全智能助手
+# PassAgent - 基于 LLM Agent 的口令安全助手
 
 <div align="center">
 
@@ -6,57 +6,94 @@
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green.svg)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-20-61DAFB.svg?logo=react&logoColor=white)](https://reactjs.org)
-[![MCP](https://img.shields.io/badge/MCP-Protocol-orange.svg?style=flat&logo=anthropic)](https://modelcontextprotocol.io)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Agent-orange.svg)](https://langchain-ai.github.io/langgraph/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-*一个集成多种AI技术的全方位密码安全分析与智能推荐系统*
+*基于 LangGraph 多步推理 Agent 的口令安全分析、生成与记忆恢复系统*
 
-[功能特性](#功能特性) • [快速开始](#快速开始) • [项目架构](#项目架构) • [开发指南](#开发指南)
+[功能特性](#功能特性) • [系统架构](#系统架构) • [快速开始](#快速开始) • [项目结构](#项目结构)
 
 </div>
 
-## 📋 项目简介
+## 项目简介
 
-PassAgent 是一个基于大语言模型(LLM)的智能密码安全助手，旨在为用户提供全方位的密码安全服务。系统集成了密码转换分析、强度评估、安全检测、智能推荐等多项功能，通过AI技术帮助用户构建更安全的密码防护体系。
+PassAgent 是一个基于大语言模型 Agent 的口令安全助手。系统采用 LangGraph 构建多步推理 Agent，通过 Planner 节点自主决策工具调用链路，结合用户记忆系统实现个性化服务。支持口令强度评估、智能口令生成、口令记忆恢复、泄露检查和图形口令等场景。
 
-## ✨ 功能特性
+## 功能特性
 
-### 🔄 密码转换分析
-- **Hashcat规则生成**：分析两个密码之间的转换关系，自动生成对应的Hashcat规则
-- **转换验证**：验证生成规则的正确性和有效性
-- **批量分析**：支持大规模密码对的批量转换分析
+### 口令强度评估
+- zxcvbn 熵值评估、字符组成分析、键盘模式检测
+- 弱口令库匹配（Top100 / Top1000 / RockYou）
+- 重复字符检测、PCFG 结构模式分析
+- PassGPT 概率估计、Pass2Rule 规则变换分析
+- 拼音组合检测、日期模式检测
+- 结合用户记忆的个人信息关联检测
 
-### 🛡️ 密码强度评估
-- **多维度评估**：结合传统算法、LLM分析和PassGPT等多种评估方法
-- **实时评分**：提供0-100的强度评分和详细的安全建议
-- **可视化展示**：直观展示密码的各项安全指标
+### 智能口令生成
+- 基于种子词（个人信息、偏好）的变换生成
+- 助记短语型口令、可发音随机口令
+- 多模态输入支持：上传图片/音频，由 Qwen-Omni 提取关键词作为生成素材
+- 自动获取目标网站密码策略，确保生成结果合规
+- 生成后自动反向验证强度
 
-### 🔍 安全检测
-- **泄露检测**：基于海量泄露数据库检测密码是否已被泄露
-- **合规性检查**：验证密码是否符合各种安全策略和行业标准
-- **风险评估**：综合评估密码的安全风险等级
+### 口令记忆恢复
+- 片段排列组合 + 常见变体扩展
+- Hashcat 规则生成（微调模型）
+- 日期格式扩展
+- 结合用户记忆中的事实线索辅助恢复
 
-### 💡 智能密码推荐
-- **文本语义推荐**：基于用户输入的文本描述生成个性化密码
-- **图像内容推荐**：分析上传图片内容，生成相关的安全密码
-- **地理位置推荐**：结合地图选点信息，生成易记且安全的密码
-- **个性化定制**：根据用户偏好和安全要求定制推荐策略
+### 泄露检查
+- HIBP k-Anonymity 密码泄露查询
+- 邮箱关联泄露事件查询
+- 泄露事件详情查看
+- 常见变体批量泄露检查
 
-### 🤖 多模态AI支持
-- **大语言模型集成**：支持Qwen、Deepseek等多种LLM
-- **计算机视觉**：图像内容理解和特征提取
-- **意图理解**：自动识别用户的密码安全需求
-- **工具编排**：智能选择和组合不同的安全分析工具
+### 图形口令
+- 图片选点口令、地图选点口令
 
-## 🚀 快速开始
+### 用户记忆系统
+- 三类记忆：PREFERENCE（偏好）、FACT（事实）、CONSTRAINT（约束）
+- Agent 自动从对话中提取记忆，支持用户手动管理
+- 语义检索：text2vec-base-chinese 向量化 + 余弦相似度匹配
+- 全量偏好/约束 + Top-K 语义事实的两阶段检索策略
+
+## 系统架构
+
+```
+┌──────────────┐     ┌──────────────────────┐     ┌─────────────────────┐
+│   Frontend   │────▶│   Backend + Agent    │────▶│   Model Service     │
+│   (Next.js)  │ SSE │   (FastAPI+LangGraph)│HTTP │   (vLLM)            │
+│   Port 3000  │◀────│   Port 8000          │◀────│   Port 8080         │
+└──────────────┘     └──────────┬───────────┘     └─────────────────────┘
+                                │                   GPU Container
+                                ▼                   - Qwen2.5-7B (4bit) 常驻
+                     ┌──────────────────┐           - Qwen-1.7B 微调 (4bit) 常驻
+                     │   SQLite         │           - Qwen-Omni-7B (4bit) 按需
+                     │   passagent.db   │
+                     └──────────────────┘
+```
+
+### Agent 工作流
+
+```
+START → Planner(LLM决策) → Router(条件分支) → Tool(执行) → 回到Planner
+                ↓ action=="respond"
+            Respond(生成回复) → Write Memory(写入记忆) → END
+```
+
+Planner 通过 Function Calling 自主决策调用哪些工具，支持跨 skill 组合调用，最大循环 10 次。
+
+### 任务队列
+
+单 Worker 协程 FIFO 处理，每个 Task 持有独立的 `asyncio.Queue` 作为 Worker 与 SSE 连接之间的事件桥梁，支持多用户排队。
+
+## 快速开始
 
 ### 环境要求
-- Python 3.8+
-- Node.js v20.10.0 (可选，用于前端开发)
-- npm 10.2.5
-- 8GB+ RAM
-- 支持CUDA的GPU (可选，用于本地模型推理)
+- Python 3.12+
+- Node.js 20+
+- 支持 CUDA 的 GPU（模型推理服务）
 
 ### 安装步骤
 
@@ -66,157 +103,117 @@ PassAgent 是一个基于大语言模型(LLM)的智能密码安全助手，旨�
    cd PassAgent
    ```
 
-2. **安装依赖**
+2. **后端**
    ```bash
-   # 建议创建虚拟环境，python版本为3.12.0
-   pip install -r requirements.txt
+   cd backend
+   uv sync          # 安装 Python 依赖
+   cp .env.example .env
+   # 编辑 .env，配置 JWT 密钥、邮件服务、HIBP API Key 等
    ```
 
-3. **配置环境变量**
-   ```bash
-   cp .env.example backend/.env
-   # 编辑 .env 文件，配置API密钥等信息，主要需要配置DEEPSEEK API
-   ```
-
-4. **前端安装**
+3. **前端**
    ```bash
    cd frontend
    npm install
+   cp .env.example .env.local
    ```
 
-5. **启动应用**
+4. **模型服务**
    ```bash
-   python scripts/start_all.py
+   bash scripts/download_models.sh    # 下载模型权重
    ```
 
-6. **访问应用**
-  🌐 Web界面: http://localhost:8080
+5. **初始化数据库**
+   ```bash
+   bash scripts/init_db.sh
+   ```
 
+6. **Docker 部署**
+   ```bash
+   docker-compose up -d
+   ```
 
-## 📁 项目结构
+7. **访问**
+   - 前端：http://localhost:3000
+   - 后端 API：http://localhost:8000
+   - 模型服务：http://localhost:8080
 
+## 项目结构
 
-
-## 🔧 API文档
-
-### 主要接口
-
-#### 密码转换分析
-```http
-POST /api/v1/password/analyze/transformation
-Content-Type: application/json
-
-{
-    "original_password": "password123",
-    "target_password": "Password123!"
-}
+```
+PassAgent/
+├── backend/
+│   ├── main.py                          # FastAPI 入口
+│   ├── config.py                        # 环境变量、常量配置
+│   ├── database/                        # SQLite 连接、ORM 模型、建表
+│   ├── schemas/                         # Pydantic 请求/响应模型
+│   ├── routers/                         # API 路由（auth/user/session/chat/upload/feedback/memory）
+│   ├── services/                        # 业务逻辑（认证/邮件/会话/文件）
+│   ├── worker/                          # 任务队列 + Worker 协程
+│   ├── agent/
+│   │   ├── graph.py                     # LangGraph 状态图定义
+│   │   ├── state.py                     # Agent 状态 TypedDict
+│   │   ├── planner.py                   # Planner 节点（Function Calling 决策）
+│   │   ├── response.py                  # Respond 节点（生成回复 + 引导建议）
+│   │   ├── memory/                      # 记忆读取、写入、embedding
+│   │   └── tools/                       # 工具集
+│   │       ├── strength/                #   强度评估（11 个工具）
+│   │       ├── generation/              #   口令生成（6 个工具）
+│   │       ├── recovery/                #   记忆恢复（4 个工具）
+│   │       ├── leak/                    #   泄露检查（4 个工具）
+│   │       └── graphical/               #   图形口令（1 个工具）
+│   ├── utils/                           # LLM 客户端、安全工具、依赖注入
+│   └── data/                            # 弱口令库、键盘模式、拼音字典等
+│
+├── frontend/                            # Next.js 前端
+│   └── src/
+│       ├── app/                         # 页面（首页/登录/注册/聊天）
+│       ├── components/                  # 组件（sidebar/chat/graphical/settings）
+│       ├── hooks/                       # 自定义 hooks（auth/chat/sessions/memories/files）
+│       ├── lib/                         # API 封装、SSE 解析、工具函数
+│       └── providers/                   # Context Providers（auth/theme）
+│
+├── model_service/                       # vLLM 模型推理服务
+├── scripts/                             # 初始化、模型下载脚本
+└── docker-compose.yml
 ```
 
-#### 密码强度评估
-```http
-POST /api/v1/password/analyze/strength
-Content-Type: application/json
+## API 概览
 
-{
-    "password": "MySecurePassword123!"
-}
-```
+所有接口（除 auth 外）需要 `Authorization: Bearer <jwt_token>`。
 
-#### 密码推荐
-```http
-POST /api/v1/password/recommend
-Content-Type: application/json
+| 模块 | 接口 | 说明 |
+|------|------|------|
+| 认证 | `POST /api/auth/send-code` | 发送验证码 |
+| | `POST /api/auth/register` | 注册 |
+| | `POST /api/auth/login` | 登录 |
+| 用户 | `GET/PUT /api/user/profile` | 获取/更新个人信息 |
+| 会话 | `POST/GET /api/sessions` | 创建/列表会话 |
+| | `DELETE /api/sessions/{id}` | 删除会话 |
+| | `GET /api/sessions/{id}/messages` | 获取消息历史 |
+| 对话 | `POST /api/chat/{session_id}` | 发送消息（SSE 流式响应） |
+| 文件 | `POST /api/upload` | 上传图片/音频 |
+| | `GET /api/files` | 文件列表 |
+| | `DELETE /api/files/{id}` | 删除文件 |
+| 反馈 | `POST /api/messages/{id}/feedback` | 点赞/点踩 |
+| 记忆 | `GET/POST /api/memories` | 查看/添加记忆 |
+| | `DELETE /api/memories/{id}` | 删除记忆 |
 
-{
-    "type": "text",
-    "content": "我喜欢猫咪和咖啡",
-    "requirements": {
-        "length": 12,
-        "include_special": true,
-        "include_numbers": true
-    }
-}
-```
+核心对话接口 `POST /api/chat/{session_id}` 通过 SSE 推送 `task_queued` → `task_started` → `agent_step` → `response_chunk` → `response_done` → `done` 事件流。
 
+详细 API 文档见 [API.md](API.md)。
 
+## 技术栈
 
-## 🏗️ 项目架构
+| 层 | 技术 |
+|----|------|
+| 前端 | Next.js 15, React, TypeScript, Tailwind CSS |
+| 后端 | FastAPI, LangGraph, SQLAlchemy, Pydantic |
+| 模型推理 | vLLM, Qwen2.5-7B, Qwen-Omni-7B |
+| 数据库 | SQLite |
+| 向量化 | text2vec-base-chinese |
+| 部署 | Docker Compose |
 
-### 技术栈
-- **后端框架**: FastAPI + uvicorn + MCP
-- **前端框架**: React 18 + TypeScript + Ant Design
-- **数据库**: SQLite + Milvus (向量数据库)
-- **AI模型**: Qwen, Deepseek, PassGPT等
-- **部署方案**: Docker + Docker Compose
+## 许可证
 
-### 系统架构图
-
-
-
-
-
-## 📊 功能演示
-
-
-
-## 🐳 Docker 部署
-
-### 快速部署
-```bash
-# 启动所有服务
-docker-compose up -d
-
-# 查看服务状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f backend
-```
-
-### 生产环境部署
-```bash
-# 使用生产配置启动
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-
-
-## 🤝 贡献指南
-
-我们欢迎各种形式的贡献！
-
-### 贡献方式
-- 🐛 报告Bug
-- 💡 提出新功能建议
-- 📝 改进文档
-- 🔧 提交代码
-
-## 📄 许可证
-
-本项目基于 MIT 许可证开源 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 🙏 致谢
-
-- 感谢所有贡献者的辛勤工作
-- 感谢开源社区提供的优秀工具和库
-- 特别感谢 Hashcat、PassGPT 等项目的启发
-
-## 📞 联系我们
-
-- **项目主页**: https://github.com/zlh123123/PassAgent
-- **问题反馈**: https://github.com/zlh123123/PassAgent/issues
-- **邮箱**: lh.zhang.work@gmail.com
-
-## 🗺️ 开发路线图
-
-- [ ] v1.0 - 基础功能实现
-
-
----
-
-<div align="center">
-
-**如果这个项目对您有帮助，请给我们一个 ⭐️ Star！**
-
-
-</div>
+MIT License - 见 [LICENSE](LICENSE)。
