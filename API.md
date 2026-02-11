@@ -744,7 +744,7 @@ Planner 组装参数调 generate_password：
 
 ### 5.1 架构
 
-v
+```
 用户发消息
     │
     ▼
