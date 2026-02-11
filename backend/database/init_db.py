@@ -1,0 +1,19 @@
+"""建表脚本"""
+from .connection import engine
+from .models import Base
+
+
+def init_database():
+    """创建所有表"""
+    Base.metadata.create_all(bind=engine)
+    print("数据库表创建完成")
+
+
+def drop_database():
+    """删除所有表（谨慎使用）"""
+    Base.metadata.drop_all(bind=engine)
+    print("数据库表已删除")
+
+
+if __name__ == "__main__":
+    init_database()
