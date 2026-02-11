@@ -1,0 +1,2907 @@
+# 毕设Agent项目评价
+
+## 1. 毕设Agent项目评价
+
+**system**: 
+
+```
+You are a helpful assistant.
+```
+
+**user**: 
+
+```
+这是我的毕设，做一个agent的项目，算是一个垂域的agent吧（在某种意义上其实是在蹭agent的热度），反正我感觉目前这个挺抽象的做的，你如何评价？我不玻璃心
+```
+
+Attachments:
+- pasted_text_0.txt
+
+**assistant**: 
+
+```
+看完了，说实话吧。
+
+## 整体评价
+
+你这个项目的选题方向其实不错——口令安全是个实打实的安全领域问题，不是纯蹭热度。但目前的问题在于：你铺得太广了，像是把一个"口令安全工具箱"硬套了一层 Agent 的壳。
+
+## 说几个核心问题
+
+1. "Agent" 的含义被稀释了
+
+你现在的架构本质上是：RoBERTa 做意图分类 → LLM 提取关键词 → 路由到对应功能模块。这其实就是一个经典的 NLU pipeline + 工具调用，跟 2023 年之前的 task-oriented dialogue system 没有本质区别。真正的 Agent 强调的是自主规划、多步推理、动态决策——比如用户说"帮我把所有账号的密码都换成更安全的"，Agent 能自己拆解任务、调用多个工具、处理中间状态。你目前的设计里看不到这种能力，每个功能都是单轮触发、单次执行。
+
+如果答辩老师问你"这个跟一个带了 NLU 的 chatbot 有什么区别"，你得有个好答案。
+
+2. 功能太多，每个都浅
+
+5 个功能 + 图形口令 + 记忆模块 + 多模态（图片/音频）+ 前端全套 + 数据库 8 张表。这是一个毕设，不是一个创业项目。你大概率会陷入每个功能都做了个 demo 但没一个做深的状态。建议砍到 2-3 个核心功能，做透。
+
+比如图形口令那个，跟前面的文本口令体系完全是两条线，放在一起很割裂。多模态（图片生成密码、音频生成密码）听起来酷，但实际场景很牵强——谁会用猫的照片生成密码？这种功能在答辩时容易被质疑实用性。
+
+3. 记忆模块设计过度
+
+你设计了 PREFERENCE / FACT / CONSTRAINT 三种类型，还要做向量语义检索。但你想想实际场景：一个用户能积累多少条记忆？大概率就几条到十几条。这个量级根本不需要向量检索，全量拉出来塞进 prompt 就完事了。你在一个不需要复杂方案的地方设计了复杂方案，答辩时反而容易被问"为什么不直接全量检索"。
+
+4. 意图分类用 RoBERTa 微调，有点杀鸡用牛刀但又不够
+
+99% 准确率听起来好，但你的测试集是 deepseek 合成的——训练集和测试集同分布，这个数字说服力有限。而且只有 5+1 个类别，用 LLM 做 few-shot 分类大概率也能到 95%+，你多引入一个模型的部署和维护成本，收益不明显。当然如果你的论文需要这个实验来凑内容，那另说。
+
+5. 真正有价值的部分被埋没了
+
+你后面提到的 pass2edit 规则生成、用 qwen1.7b 微调做 hashcat 规则预测、top-500 准确率 75%——这些才是你项目里真正有技术含量的部分。但在你的文档里，这些内容被淹没在大量的前端 UI 细节和数据库表设计里了。
+
+## 建议
+
+- 砍功能：保留强度评估、口令生成、泄露检查三个核心功能，把图形口令和多模态去掉
+- 突出亮点：把 pass2edit / passllm 的规则生成能力作为核心卖点，这是你跟普通 chatbot 拉开差距的地方
+- 让 Agent 更像 Agent：加入多步推理的场景，比如"评估强度 → 发现弱 → 自动建议增强 → 检查泄露"这种链式调用，而不是每个功能都是独立的单轮对话
+- 记忆模块简化：先做全量检索，论文里可以讨论"未来可以用向量检索优化"，但 MVP 阶段别过度设计
+- 补充真实数据评估：意图分类别只用合成数据测，找几个同学真实使用一下，收集 50-100 条真实 query 测一测
+
+总的来说，你的技术栈选型没问题，口令安全的领域知识也有积累，但需要聚焦。毕设最怕的就是"什么都有但什么都不深"，答辩老师一追问细节就露馅。把 80% 的精力放在 20% 最有价值的功能上，比铺一个大而全的系统强得多。
+```
+
+**user**: 
+
+```
+把图形口令和多模态去掉：这个没办法，老师要求要有，那你的意思是我不需要这个意图识别的能力？
+而且还有一个问题是目前这里面要加载很多模型，因为考虑到口令密码这种隐私信息不外发，所以不打算用外部的LLM API，还需要本地部署的LLM，感觉显存还有些问题
+```
+
+**assistant**: 
+
+```
+明白，老师要求的那没办法，保留就是了。
+
+## 关于意图分类
+
+不是说不需要，而是说你要想清楚这一层的性价比。
+
+你现在的方案是 RoBERTa 微调做分类，但你想想：
+
+- 你本来就要部署一个本地 LLM（比如 Qwen）来做后续的关键词提取、回复生成等
+- 这个 LLM 本身就能做意图分类，few-shot 或者 system prompt 里写清楚就行
+- 多部署一个 RoBERTa 意味着多占一份显存，多一个模型要维护
+
+所以更务实的做法是：让本地 LLM 一步到位，同时完成意图分类 + 关键词提取。你省下来的显存可以给更需要的模型用。
+
+当然，如果你论文里需要"对比实验"来凑内容（RoBERTa 分类 vs LLM 分类的速度/准确率对比），那保留 RoBERTa 反而是好事，能多写一节实验分析。这个你自己权衡。
+
+## 显存问题才是真正的硬伤
+
+你盘一下现在要加载的模型：
+
+- 本地 LLM（Qwen 1.7B 或更大）— 对话 + 意图 + 关键词
+- RoBERTa-wwm-ext — 意图分类（如果保留）
+- PassGPT / 微调的 Qwen — 规则生成 / 口令概率评估
+- Qwen2-VL — 图片理解（老师要求的多模态）
+- Qwen2-Audio — 音频理解（老师要求的多模态）
+- zxcvbn / PCFG — 这俩是 CPU 的，不占显存
+
+光多模态这两个模型就很吃显存了。你的显卡是什么配置？如果是单卡 24G（比如 4090），同时加载这些基本不可能。
+
+几个缓解思路：
+
+1. 模型不要常驻，按需加载/卸载：意图识别完发现是多模态任务，再加载 VL/Audio 模型，用完释放。延迟会高一些但显存够用。这个在毕设 demo 里完全可以接受，答辩的时候等几秒没人会在意。
+
+2. 统一用 Qwen-Omni 替代 VL + Audio 两个模型：你文档里也提到了这个选项，一个模型覆盖图片和音频，省一份显存。
+
+3. 量化：所有模型上 4bit 量化（GPTQ / AWQ），Qwen 1.7B 4bit 大概只要 1.5G 左右，VL 模型 7B 4bit 大概 4-5G。
+
+4. 隐私问题可以分层处理：口令相关的推理（强度评估、规则生成）必须本地跑，这个没问题。但意图分类、回复润色、图片描述这些不涉及原始密码的步骤，其实可以用外部 API。你把密码脱敏后再发出去就行。这样能大幅减少本地模型数量。
+
+比较现实的方案是这样分配：
+
+| 功能 | 模型 | 部署方式 |
+|------|------|----------|
+| 意图分类 + 关键词提取 + 对话 | Qwen 7B 4bit | 本地常驻 (~5G) |
+| 口令规则生成 | 微调 Qwen 1.7B 4bit | 本地常驻 (~1.5G) |
+| 多模态理解 | Qwen-Omni 7B 4bit | 本地按需加载 (~5G) |
+| 口令概率 (PassGPT) | 按需加载 | 本地按需 |
+| zxcvbn / PCFG / HIBP | 规则/API | CPU / 网络 |
+
+这样常驻显存大概 7G 左右，按需加载峰值 12-13G，单卡 24G 能撑住。
+
+你先确认一下你的显卡配置，我可以帮你更具体地规划。
+```
+
+**user**: 
+
+```
+那我原来想的是一个纯流水线的结构，我知道这个不能是agent，不然就变成了一个能对话和自然语言交互的流水线吗？我这里是打算用langgraph去搭的，怎么做合适？以及这里的数据库表设计有问题吗
+```
+
+**assistant**: 
+
+```
+
+
+好问题，这其实是你这个项目能不能站住"Agent"这个标签的关键。
+
+## 流水线 vs Agent 的核心区别
+
+流水线：意图识别 → 提取参数 → 调用工具 → 返回结果。路径是固定的，写死的 if-else。
+
+Agent：LLM 自己决定下一步做什么，能根据中间结果动态调整，能多步推理，能自己判断"够了"还是"还需要再做一步"。
+
+你用 LangGraph 搭的话，天然就适合做后者，因为 LangGraph 的核心就是状态图 + 条件边。
+
+## 用 LangGraph 怎么搭才像 Agent
+
+关键思路：不要把 5 个功能当成 5 条独立流水线，而是当成 5 个工具，让 LLM 作为中心节点自己决定调用哪个、调用几次、什么顺序。
+
+举个具体的场景：
+
+
+用户："帮我看看 zly2023! 这个密码怎么样"
+
+Agent 思考：这是强度评估 → 调用 zxcvbn
+→ zxcvbn 返回：弱，熵值低
+→ Agent 思考：还应该查一下泄露 → 调用 HIBP
+→ HIBP 返回：已泄露 3 次
+→ Agent 思考：应该给用户生成个更好的替代方案
+→ 读取记忆：用户偏好 16 位、喜欢用 #
+→ 调用口令生成模块
+→ 整合所有结果，一次性回复
+
+
+这就是 Agent——LLM 自己决定了要串联三个工具，而不是你代码里写死"强度评估之后一定要查泄露"。
+
+LangGraph 的状态图大概长这样：
+
+
+from langgraph.graph import StateGraph, END
+from typing import TypedDict, Annotated
+
+class AgentState(TypedDict):
+    messages: list              # 对话历史
+    user_id: str
+    memories: list              # 检索到的记忆
+    tool_results: dict          # 各工具的返回结果
+    next_action: str            # LLM 决定的下一步
+
+def router(state: AgentState) -> str:
+    """LLM 决定下一步做什么，这是 Agent 的核心"""
+    # 把当前 state 喂给 LLM，让它决定：
+    # - 调用某个工具（strength / generate / recover / leak / graphical）
+    # - 读取记忆（retrieve_memory）
+    # - 直接回复用户（respond）
+    return state["next_action"]
+
+graph = StateGraph(AgentState)
+
+# 节点
+graph.add_node("planner", planner_node)           # LLM 规划下一步
+graph.add_node("retrieve_memory", memory_node)     # 记忆检索
+graph.add_node("strength_check", strength_node)    # 强度评估
+graph.add_node("leak_check", leak_node)            # 泄露检查
+graph.add_node("generate", generate_node)          # 口令生成
+graph.add_node("recover", recover_node)            # 记忆恢复
+graph.add_node("graphical", graphical_node)        # 图形口令
+graph.add_node("respond", respond_node)            # 生成最终回复
+graph.add_node("write_memory", write_memory_node)  # 写入记忆
+
+# 核心：从 planner 出发，根据 LLM 的决策走不同的边
+graph.add_conditional_edges("planner", router, {
+    "retrieve_memory": "retrieve_memory",
+    "strength_check": "strength_check",
+    "leak_check": "leak_check",
+    "generate": "generate",
+    "recover": "recover",
+    "graphical": "graphical",
+    "respond": "respond",
+})
+
+# 每个工具执行完都回到 planner，让 LLM 决定是否继续
+graph.add_edge("retrieve_memory", "planner")
+graph.add_edge("strength_check", "planner")
+graph.add_edge("leak_check", "planner")
+graph.add_edge("generate", "planner")
+graph.add_edge("recover", "planner")
+graph.add_edge("graphical", "planner")
+
+# respond 之后写记忆，然后结束
+graph.add_edge("respond", "write_memory")
+graph.add_edge("write_memory", END)
+
+graph.set_entry_point("planner")
+
+
+这样你的 RoBERTa 就不需要了——planner 节点里的 LLM 自己做意图识别 + 规划，而且它能做到"一个 query 触发多个工具"，这是分类器做不到的。
+
+## 数据库表的问题
+
+看了一遍，大方向没问题，几个具体的点：
+
+1. `password_analysis` 表里存 `original_password_hash` 和 `target_password_hash`——你既然说不存原始密码，那存 hash 的意义是什么？用户不会拿着 hash 来查历史记录。如果是为了去重（同一个密码不重复分析），可以只存 hash，但字段名和用途要在论文里说清楚，不然答辩会被问。
+
+2. `feedback` 表的 `feedback_type` 包含 `null`——这个不需要，没反馈就不插入这条记录，别用 null 当业务状态。
+
+3. `user_memories` 的 `embedding` 字段——前面说了，你的记忆量级很小，这个字段大概率用不上。建议先不加，表结构简单点，论文里写"预留了向量检索的扩展能力"就行。
+
+4. `uploaded_files` 关联 `session_id` 是可选的，这个设计 OK。但你要考虑一个问题：用户上传的图片/音频经过多模态模型处理后，提取出的文本描述存在哪？建议在这张表加一个 `extracted_text` 字段，或者直接存到 messages 里。
+
+5. 缺一张表：`tool_invocations`（工具调用记录）。既然你是 Agent 架构，每次 planner 决定调用什么工具、传了什么参数、返回了什么结果，这些应该记录下来。一方面方便调试，另一方面论文里可以用这个数据分析"Agent 的决策路径分布"，这是很好的实验素材。
+
+
+tool_invocations:
+- invocation_id (主键)
+- session_id (外键 → sessions)
+- message_id (外键 → messages)
+- tool_name (strength_check / leak_check / generate / ...)
+- input_params (JSON, 脱敏后的输入)
+- output_summary (JSON, 工具返回摘要)
+- execution_time_ms (执行耗时)
+- created_at
+
+
+总结一下：用 LangGraph 的条件边让 LLM 自己做路由和多步规划，这才是 Agent；把 5 个功能降级为工具而不是独立流水线；数据库加个工具调用记录表，其他小问题修一修就行。
+```
+
+**user**: 
+
+```
+是不是这种，我的5个功能就是5个skills，然后每个功能下都有许多tools，是这种概念吗
+```
+
+**assistant**: 
+
+```
+对，就是这个概念。
+
+## 两层结构
+
+
+Agent (LLM Planner)
+├── Skill: 强度评估
+│   ├── Tool: zxcvbn (熵值计算)
+│   ├── Tool: PCFG (结构分析)
+│   ├── Tool: PassGPT (概率评估)
+│   └── Tool: 弱口令库匹配
+├── Skill: 口令生成
+│   ├── Tool: 多模态解析 (图片/音频 → 文本)
+│   ├── Tool: 记忆检索 (拿用户偏好/事实)
+│   ├── Tool: 助记词变换 (大小写、符号插入等)
+│   └── Tool: 网站策略适配 (爬取密码规则)
+├── Skill: 记忆恢复
+│   ├── Tool: 记忆检索
+│   ├── Tool: 片段排列组合
+│   └── Tool: 规则生成 (微调模型)
+├── Skill: 泄露检查
+│   ├── Tool: HIBP 查询
+│   └── Tool: 本地泄露库匹配
+└── Skill: 图形口令
+    └── Tool: 前端组件唤起 (返回配置参数)
+
+
+但在 LangGraph 里，你不需要显式地建一个"Skill"层。实际落地的时候，Skill 就是一组 tools 的逻辑分组，planner 直接调用的还是具体的 tool。
+
+区别在于粒度：
+
+- 你之前的设计：planner 说"去做强度评估" → 强度评估模块内部写死调 zxcvbn + PCFG + PassGPT → 返回结果。这是流水线。
+- Agent 的做法：planner 说"先调 zxcvbn 看看" → 拿到结果发现熵值很低 → planner 判断"这么弱就不用跑 PassGPT 了，直接告诉用户很弱" → 再决定要不要顺便查泄露。LM 自己控制调用哪些 tools、调用顺序、是否跳过。
+
+所以在 LangGraph 里，你注册的是扁平的 tools 列表，但你可以在 planner 的 system prompt 里按 skill 分组描述它们：
+
+
+PLANNER_PROMPT = """你是 PassAgent，一个口令安全助手。
+
+你可以使用以下工具，按功能分组：
+
+【强度评估相关】
+- zxcvbn_check: 计算口令熵值和评分，输入为明文口令
+- pcfg_analyze: 分析口令结构模式，输入为明文口令
+- passgpt_prob: 评估口令被猜测的概率，输入为明文口令
+- weak_password_match: 匹配常见弱口令库，输入为明文口令
+
+【口令生成相关】
+- multimodal_parse: 将图片/音频转为文本描述，输入为文件路径
+- retrieve_memory: 检索用户偏好和背景信息，输入为查询文本
+- transform_seed: 将助记词变换为安全口令，输入为种子文本+约束条件
+- fetch_site_policy: 获取目标网站的密码策略，输入为网站名称/URL
+
+【泄露检查相关】
+- hibp_check: 查询口令/邮箱是否在已知泄露中，输入为口令或邮箱
+
+...
+
+根据用户的需求，自行决定调用哪些工具、什么顺序。
+不需要每次都调用同一组的所有工具，根据中间结果判断是否需要继续。
+"""
+
+
+这样 LM 看到的是带分组注释的工具列表，它自己会理解"强度评估大概要用前四个"，但它有自主权决定只用其中两个，或者跨组调用。
+
+这就是你跟答辩老师讲的时候可以说的：Skill 是逻辑概念，Tool 是执行单元，Agent 通过 LLM 规划来动态编排 tools，而不是按 skill 走固定流程。这比纯流水线高级，而且用 LangGraph 实现起来也不复杂。
+```
+
+**user**: 
+
+```
+那我这里面要设计的是什么？就是agent的各个组件？什么planner？memory？这些都是langgraph原生支持的吗
+```
+
+**assistant**: 
+
+```
+LangGraph 本身是个很底层的东西，它只给你状态图（节点 + 边 + 状态），其他全要你自己搭。
+
+## 你需要设计的组件
+
+
+PassAgent
+├── 1. State（状态定义）        ← 你设计
+├── 2. Planner（规划节点）      ← 你设计，核心是 prompt
+├── 3. Tools（工具函数）        ← 你设计，每个 tool 一个函数
+├── 4. Memory（记忆模块）       ← 你设计，读写数据库
+├── 5. Router（路由逻辑）       ← LangGraph 的条件边，但判断逻辑你写
+└── 6. Response（回复生成）     ← 你设计
+
+
+逐个说：
+
+### 1. State — LangGraph 原生支持，你定义结构
+
+这是在各节点之间流转的数据，LangGraph 帮你管理状态的传递和更新。
+
+
+class PassAgentState(TypedDict):
+    messages: Annotated[list, add_messages]  # 对话历史，LangGraph 内置的消息累加
+    user_id: str
+    memories: list                # 检索到的用户记忆
+    current_plan: str             # planner 当前决策
+    tool_results: list            # 已执行的工具结果
+    pending_tool: str | None      # 下一个要调用的工具
+    final_response: str | None    # 最终回复
+
+
+### 2. Planner — 你自己写，就是一个调 LLM 的函数
+
+这是 Agent 的大脑，LangGraph 不提供，你自己实现：
+
+
+def planner_node(state: PassAgentState) -> dict:
+    """LLM 看当前状态，决定下一步"""
+    
+    prompt = f"""你是 PassAgent。
+    
+当前对话：{state['messages']}
+用户记忆：{state['memories']}
+已有工具结果：{state['tool_results']}
+
+可用工具：
+- zxcvbn_check: 计算熵值
+- pcfg_analyze: 结构分析
+- hibp_check: 泄露查询
+- retrieve_memory: 检索用户偏好
+- generate_password: 生成口令
+- multimodal_parse: 图片/音频转文本
+...
+
+请决定下一步：
+1. 调用某个工具（输出 tool_name 和参数）
+2. 直接回复用户（输出 respond）
+
+用 JSON 格式输出你的决策。"""
+
+    response = local_llm.invoke(prompt)
+    decision = parse_json(response)
+    
+    return {
+        "pending_tool": decision.get("tool_name"),
+        "current_plan": decision.get("reasoning"),
+    }
+
+
+### 3. Tools — 你自己写每个工具函数
+
+
+def zxcvbn_check(state: PassAgentState) -> dict:
+    """调用 zxcvbn 库"""
+    password = extract_password(state)
+    result = zxcvbn(password)
+    return {
+        "tool_results": state["tool_results"] + [{
+            "tool": "zxcvbn_check",
+            "score": result["score"],
+            "entropy": result["guesses_log10"],
+            "feedback": result["feedback"]
+        }],
+        "pending_tool": None
+    }
+
+def hibp_check(state: PassAgentState) -> dict:
+    """查询 HIBP"""
+    # ...
+
+def multimodal_parse(state: PassAgentState) -> dict:
+    """加载 Qwen-Omni，解析图片/音频"""
+    # ...
+
+
+### 4. Memory — 你自己写，读写你设计的数据库表
+
+LangGraph 不管这个：
+
+
+def retrieve_memory_node(state: PassAgentState) -> dict:
+    """从 user_memories 表检索"""
+    user_id = state["user_id"]
+    
+    # 全量拉偏好
+    preferences = db.query(
+        "SELECT content FROM user_memories WHERE user_id=? AND memory_type='PREFERENCE'",
+        user_id
+    )
+    # 关键词匹配事实（不用向量，简单 LIKE 就够）
+    query = state["messages"][-1].content
+    facts = db.query(
+        "SELECT content FROM user_memories WHERE user_id=? AND memory_type='FACT'",
+        user_id
+    )
+    
+    return {"memories": preferences + facts}
+
+def write_memory_node(state: PassAgentState) -> dict:
+    """让 LLM 判断这轮对话有没有值得记住的新信息"""
+    prompt = f"""根据这轮对话，提取值得记住的用户信息（非密码）：
+    对话：{state['messages']}
+    已有记忆：{state['memories']}
+    如果没有新信息，返回空列表。"""
+    
+    new_memories = local_llm.invoke(prompt)
+    # 写入数据库...
+    return state
+
+
+### 5. 组装成图
+
+
+graph = StateGraph(PassAgentState)
+
+# 注册节点
+graph.add_node("planner", planner_node)
+graph.add_node("retrieve_memory", retrieve_memory_node)
+graph.add_node("zxcvbn_check", zxcvbn_check)
+graph.add_node("pcfg_analyze", pcfg_analyze)
+graph.add_node("passgpt_prob", passgpt_prob)
+graph.add_node("hibp_check", hibp_check)
+graph.add_node("generate_password", generate_password)
+graph.add_node("multimodal_parse", multimodal_parse)
+graph.add_node("recover_password", recover_password)
+graph.add_node("graphical_mode", graphical_mode)
+graph.add_node("respond", respond_node)
+graph.add_node("write_memory", write_memory_node)
+
+# 路由：planner 的输出决定走哪条边
+def route(state: PassAgentState) -> str:
+    if state["pending_tool"]:
+        return state["pending_tool"]
+    return "respond"
+
+graph.add_conditional_edges("planner", route, {
+    "retrieve_memory": "retrieve_memory",
+    "zxcvbn_check": "zxcvbn_check",
+    "pcfg_analyze": "pcfg_analyze",
+    "passgpt_prob": "passgpt_prob",
+    "hibp_check": "hibp_check",
+    "generate_password": "generate_password",
+    "multimodal_parse": "multimodal_parse",
+    "recover_password": "recover_password",
+    "graphical_mode": "graphical_mode",
+    "respond": "respond",
+})
+
+# 所有工具执行完回到 planner 重新决策
+for tool in ["retrieve_memory", "zxcvbn_check", "pcfg_analyze", 
+             "passgpt_prob", "hibp_check", "generate_password",
+             "multimodal_parse", "recover_password", "graphical_mode"]:
+    graph.add_edge(tool, "planner")
+
+# respond → 写记忆 → 结束
+graph.add_edge("respond", "write_memory")
+graph.add_edge("write_memory", END)
+
+graph.set_entry_point("planner")
+app = graph.compile()
+
+
+## 总结一下分工
+
+| 组件 | LangGraph 提供的 | 你要做的 |
+|------|-----------------|---------|
+| State | 状态管理、节点间传递 | 定义字段结构 |
+| Planner | 无 | 写 prompt + 解析 LLM 输出 |
+| Tools | 无 | 每个工具的具体实现 |
+| Memory | 无 | 数据库读写逻辑 |
+| Router | 条件边机制 | 路由判断函数 |
+| Response | 无 | 回复生成的 prompt |
+| 流式输出 | 支持 SSE streaming | 对接前端 |
+| 状态持久化 | 支持 checkpointer | 配置数据库 backend |
+
+LangGraph 就是个骨架，肉全是你自己填的。但它帮你解决了状态管理、执行流控制、循环（planner → tool → planner 的 loop）这些麻烦事，不用你自己写 while 循环去管理。
+```
+
+**user**: 
+
+```
+就是这里我整个项目是如何组织的？前后端和agent模块？我目前是打算有3个容器，前端一个，后端和agent并一起一个，还有一个负责所有的显存操作，对外提供可调用的LLM API。然后我的文件树如何组织？我目前的文件树是这样：PassAgent/
+├── backend/                # 后端逻辑 (Python/FastAPI)
+│   ├── database/           # 数据库配置与连接
+│   │   └── database.py
+│   ├── mcp/                # Model Context Protocol (MCP) 相关实现
+│   │   ├── __init__.py
+│   │   ├── client.py
+│   │   ├── server.py
+│   │   └── tools.py
+│   ├── models/             # 数据模型定义 (API 模型与数据库模型)
+│   │   ├── api_models.py
+│   │   └── database_models.py
+│   ├── routers/            # 路由处理 (聊天、上传等)
+│   │   ├── chat.py
+│   │   └── upload.py
+│   ├── services/           # 业务逻辑服务 (AI、会话、密码管理)
+│   │   ├── ai_service.py
+│   │   ├── conversation_service.py
+│   │   └── password_service.py
+│   ├── tools/              # 工具函数 (意图识别、泄漏检测、密码强度检查等)
+│   │   ├── classify_intent.py
+│   │   ├── leak_checker.py
+│   │   ├── og_sp_password_checker.py
+│   │   ├── password_char_checker.py
+│   │   ├── password_extract.py
+│   │   ├── password_length_check.py
+│   │   └── security_advice.py
+│   ├── main.py             # 后端入口
+│   ├── pyproject.toml      # 项目依赖管理
+│   └── uv.lock
+├── frontend/               # 前端应用 (Next.js/TypeScript)
+│   ├── src/
+│   │   ├── app/            # 页面路由
+│   │   ├── components/     # UI 组件
+│   │   ├── hooks/          # 自定义 Hooks
+│   │   ├── lib/            # 工具类库
+│   │   └── providers/      # Context Providers
+│   ├── public/             # 静态资源
+│   ├── next.config.mjs     # Next.js 配置
+│   ├── package.json        # 前端依赖管理
+│   ├── tailwind.config.js  # 样式配置
+│   └── tsconfig.json       # TypeScript 配置
+├── models_deploy/          # 模型部署相关
+│   ├── Dockerfile          # 容器化配置
+│   ├── entrypoint.sh       # 启动脚本
+│   └── vllm-omni/          # (子模块) 模型推理引擎相关
+├── API.md                  # API 文档
+├── ESORICS.md              # 相关学术/论文文档
+├── README.md               # 项目主说明文档
+├── TODO.md                 # 待办事项
+├── timeline.md             # 项目进展记录
+├── .env.example            # 环境变量示例
+├── .gitignore
+└── .gitmodules             # Git 子模块配置
+
+但是应该还有很多要改进的地方
+```
+
+**assistant**: 
+
+```
+
+
+你的三容器划分是合理的：前端、后端+Agent、模型推理服务。这个没问题。
+
+主要问题在 backend 内部的组织——现在 Agent 逻辑散落在 `services/`、`tools/`、`mcp/` 里，没有一个清晰的 Agent 模块。既然你要用 LangGraph 重构，`mcp/` 那套可以整个去掉了。
+
+建议的文件树：
+
+
+PassAgent/
+├── backend/
+│   ├── main.py                          # FastAPI 入口
+│   ├── config.py                        # 环境变量、配置项
+│   ├── database/
+│   │   ├── connection.py                # 数据库连接
+│   │   └── models.py                    # SQLAlchemy ORM 模型（所有表）
+│   │
+│   ├── routers/                         # FastAPI 路由层，只做 HTTP 收发
+│   │   ├── auth.py                      # 登录注册、邮箱验证、改密码
+│   │   ├── chat.py                      # 对话接口（SSE 流式）
+│   │   ├── upload.py                    # 文件上传
+│   │   ├── session.py                   # 会话管理（历史记录、搜索）
+│   │   ├── memory.py                    # 用户记忆的 CRUD（用户自定义记忆）
+│   │   └── user.py                      # 用户设置（头像、主题、API配置）
+│   │
+│   ├── agent/                           # ★ Agent 核心，整个 LangGraph 在这里
+│   │   ├── graph.py                     # LangGraph 状态图定义和编译
+│   │   ├── state.py                     # PassAgentState 定义
+│   │   ├── planner.py                   # Planner 节点（LLM 决策）
+│   │   ├── response.py                  # 回复生成节点
+│   │   ├── memory/                      # 记忆模块
+│   │   │   ├── reader.py               # 记忆检索节点
+│   │   │   └── writer.py               # 记忆写入节点
+│   │   └── tools/                       # 所有工具节点
+│   │       ├── strength/               # 强度评估相关
+│   │       │   ├── zxcvbn_tool.py
+│   │       │   ├── pcfg_tool.py
+│   │       │   └── passgpt_tool.py
+│   │       ├── generation/             # 口令生成相关
+│   │       │   ├── seed_transform.py
+│   │       │   ├── multimodal_parse.py
+│   │       │   └── site_policy.py
+│   │       ├── recovery/               # 记忆恢复相关
+│   │       │   ├── fragment_combine.py
+│   │       │   └── rule_generate.py
+│   │       ├── leak/                   # 泄露检查
+│   │       │   └── hibp_tool.py
+│   │       └── graphical/              # 图形口令
+│   │           └── graphical_tool.py
+│   │
+│   ├── services/                        # 非 Agent 的业务逻辑
+│   │   ├── auth_service.py             # 注册登录逻辑、JWT
+│   │   ├── session_service.py          # 会话 CRUD
+│   │   └── file_service.py            # 文件存储管理
+│   │
+│   ├── schemas/                         # Pydantic 请求/响应模型
+│   │   ├── auth.py
+│   │   ├── chat.py
+│   │   └── memory.py
+│   │
+│   └── utils/                           # 通用工具
+│       ├── llm_client.py               # 调用模型推理服务的统一客户端
+│       └── security.py                 # 密码哈希、JWT、加密相关
+│
+├── frontend/                            # 不变
+│   └── ...
+│
+├── model_service/                       # 模型推理服务容器
+│   ├── Dockerfile
+│   ├── entrypoint.sh
+│   ├── config.yaml                     # 模型配置（加载哪些模型、量化方式等）
+│   └── vllm-omni/                      # vLLM 推理引擎
+│
+├── docker-compose.yml                   # ★ 三个容器的编排
+├── .env.example
+├── README.md
+└── .gitignore
+
+
+几个关键设计点：
+
+1. `agent/` 是独立模块，跟 FastAPI 的路由层解耦。`routers/chat.py` 只负责接收请求、调用 `agent/graph.py` 编译好的 app、把结果 SSE 流式返回。路由层不碰任何 Agent 逻辑。
+
+2. `agent/tools/` 按 skill 分目录，但在 `graph.py` 里注册的时候是扁平的 tool 列表。目录分组只是为了代码组织清晰，不影响 Agent 的动态调度。
+
+3. `utils/llm_client.py` 是后端调模型推理服务的统一入口，所有需要调 LLM 的地方（planner、response、multimodal_parse 等）都走这个 client。这样模型服务的地址、认证、超时等配置集中管理。
+
+
+# utils/llm_client.py
+from openai import OpenAI
+
+# vLLM 对外暴露的是 OpenAI 兼容接口
+client = OpenAI(
+    base_url="http://model-service:8000/v1",  # docker 内部网络
+    api_key="not-needed"
+)
+
+def chat(messages: list, model: str = "qwen-7b", **kwargs):
+    return client.chat.completions.create(
+        model=model, messages=messages, **kwargs
+    )
+
+def chat_stream(messages: list, model: str = "qwen-7b", **kwargs):
+    return client.chat.completions.create(
+        model=model, messages=messages, stream=True, **kwargs
+    )
+
+
+4. `docker-compose.yml` 大概长这样：
+
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - model-service
+      - postgres
+    env_file: .env
+
+  model-service:
+    build: ./model_service
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  postgres:
+    image: postgres:16
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: passagent
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+volumes:
+  pgdata:
+
+
+5. 你原来的 `models/api_models.py` 和 `models/database_models.py` 拆成了 `database/models.py`（ORM）和 `schemas/`（Pydantic），这是 FastAPI 的标准做法，别混在一起。
+
+6. 去掉的东西：`mcp/` 整个目录（用 LangGraph 替代）、`tools/classify_intent.py`（planner 自己做）、`services/ai_service.py` 和 `services/password_service.py`（逻辑拆进 agent 模块了）。
+```
+
+**user**: 
+
+```
+mcp和LangGraph是啥关系？冲突的吗？
+
+```
+
+**assistant**: 
+
+```
+不冲突，它俩解决的是完全不同的问题。
+
+## 一句话区分
+
+- LangGraph：编排 Agent 的执行流程（谁先谁后、怎么循环、状态怎么传）
+- MCP：标准化工具的接入方式（工具怎么被发现、怎么被调用）
+
+## 类比
+
+LangGraph 是大脑的决策回路，MCP 是手和工具之间的接口标准。
+
+
+没有 MCP 的时候：
+Planner → 直接调用 zxcvbn_tool.py 里的 Python 函数
+
+有 MCP 的时候：
+Planner → 通过 MCP 协议 → 调用 MCP Server 暴露的 zxcvbn 工具
+
+
+## 你之前的 MCP 用法有点问题
+
+看你的文件树，`mcp/` 里有 `client.py`、`server.py`、`tools.py`，感觉你是把 MCP 当成了 Agent 的调度框架在用——用 MCP Server 注册工具，用 MCP Client 调用工具，然后在中间加 LLM 做决策。
+
+这能跑，但很别扭。MCP 的设计初衷不是做 Agent 编排，它没有状态管理、没有条件分支、没有循环机制。你等于是拿一个工具接入协议硬撑了一个 Agent 框架的活。
+
+## 你的项目里需要 MCP 吗
+
+大概率不需要。MCP 的价值在于：
+
+- 你的工具分布在不同的服务/进程里，需要一个标准协议来通信
+- 你希望工具是可插拔的，第三方可以写 MCP Server 接入你的 Agent
+- 你的工具需要跨语言调用（比如工具是 Go 写的，Agent 是 Python）
+
+你的情况是：所有工具都是 Python 函数，都跑在同一个后端容器里。直接函数调用就完事了，加一层 MCP 协议纯属多余的网络开销和复杂度。
+
+
+# 不用 MCP，直接调用
+def zxcvbn_tool(state):
+    result = zxcvbn(password)
+    return result
+
+# 用 MCP，多了一层网络
+# Client → HTTP/SSE → MCP Server → zxcvbn → 返回 → Client
+# 多了序列化、反序列化、网络延迟，但功能完全一样
+
+
+## 什么时候两个一起用有意义
+
+如果你的模型推理服务想通过 MCP 暴露能力，那是有意义的。比如：
+
+
+model_service 容器暴露 MCP Server：
+├── tool: chat_completion（通用对话）
+├── tool: multimodal_parse（多模态解析）
+└── tool: passgpt_inference（口令概率）
+
+backend 容器的 Agent 通过 MCP Client 调用这些工具
+
+
+但即便这样，用 OpenAI 兼容的 HTTP API（vLLM 原生支持）比 MCP 更简单直接。MCP 更适合工具发现和动态注册的场景，你的工具列表是固定的，不需要这个能力。
+
+## 结论
+
+对你这个项目：去掉 MCP，用 LangGraph 做编排，工具直接写成 Python 函数注册到 LangGraph 的节点里。简单、高效、没有多余的抽象层。如果答辩老师问你为什么不用 MCP，你可以说"工具都在同一进程内，MCP 的跨服务通信能力在这个场景下是过度设计"，这反而体现你对技术选型的判断力。
+```
+
+**user**: 
+
+```
+那你给我讲讲这个agent具体如何去实现吧
+```
+
+**assistant**: 
+
+```
+
+
+我先看看你文档里的完整内容，确保没遗漏什么细节。
+```
+
+Tool Call: read_file (state: result)
+Args:
+  {
+    "fileKey": "file:pasted_text_0.txt-13532-1770772765702",
+    "lineOffset": 0,
+    "maxLines": 330
+  }
+Result:
+  {
+    "fileKey": "file:pasted_text_0.txt-13532-1770772765702",
+    "content": "     1\t# 前端界面\n     2\t\n     3\t## 登录注册界面\n     4\t- [ ] 这个还是要尽快做一下，用交大邮箱注册，验证码、忘记密码等\n     5\t\n     6\t## 侧边栏\n     7\t\n     8\t收起状态下，\n     9\t- [ ] Logo放最左上角\n    10\t- [ ] Logo下方是新建对话、查看上传过的文件、询问记录三个按钮（仅icon）\n    11\t- [ ] 最下方为用户头像，用户头像下方为侧边栏缩回伸出按钮\n    12\t- [ ] 点击用户头像，出现设置、帮助、退出登录这些功能\n    13\t- [ ] 设置包括头像、外观、模型API\n    14\t- [ ] 设置这里还要考虑修改密码\n    15\t\n    16\t伸出状态下，\n    17\t- [ ] Logo放最左上角，如果左边有空位的话加上PassAgent的名字\n    18\t- [ ] Logo下方是新建对话、查看上传过的文件、询问记录三个按钮（icon+文字说明）\n    19\t- [ ] 历史记录项展示所有的历史记录\n    20\t- [ ] 历史记录按时间排序（时间可展示）\n    21\t- [ ] 历史记录提供模糊搜索功能\n    22\t- [ ] 最下方是用户头像，用户头像的右侧为侧边栏缩回伸出按钮\n    23\t\n    24\t## 主界面\n    25\t- [ ] 欢迎使用 PassAgent🤗改成Logo+名称\n    26\t- [ ] 上传文件功能在输入聊天框时要显示\n    27\t\n    28\t## 对话界面\n    29\t- [ ] 主要是要展示运行顺序，以及实现流式输出，这个可以采用LangGraph的SSE数据包实现，后续调研一下\n    30\t- [ ] 每一个回复添加重新生成、复制、点赞、点踩以及导出到PDF的按钮\n    31\t\n    32\t# 数据库设计\n    33\t\n    34\t1. users（用户表）\n    35\t- user_id (主键)\n    36\t- email (唯一，交大邮箱)\n    37\t- password_hash (加密密码)\n    38\t- avatar_url (头像URL)\n    39\t- theme (外观设置：light/dark)\n    40\t- created_at (注册时间)\n    41\t2. user_api_configs（用户API配置表）\n    42\t- config_id (主键)\n    43\t- user_id (外键 → users)\n    44\t- model_type (qwen/deepseek/local)\n    45\t- api_key (加密存储)\n    46\t- model_name (具体模型名称)\n    47\t- is_default (是否默认使用)\n    48\t- created_at\n    49\t3. sessions（会话表）\n    50\t- session_id (主键)\n    51\t- user_id (外键 → users)\n    52\t- title (会话标题)，这一步可以通过LLM做\n    53\t- created_at\n    54\t- updated_at\n    55\t4. messages（消息表）\n    56\t- message_id (主键)\n    57\t- session_id (外键 → sessions)\n    58\t- user_id (外键 → users)\n    59\t- content (消息内容)\n    60\t- message_type (user/assistant)\n    61\t- created_at\n    62\t5. feedback（用户反馈表）\n    63\t- feedback_id (主键)\n    64\t- message_id (外键 → messages，唯一)\n    65\t- user_id (外键 → users)\n    66\t- feedback_type (like/dislike/null)\n    67\t- created_at\n    68\t6. uploaded_files（上传文件表）\n    69\t- file_id (主键)\n    70\t- user_id (外键 → users)\n    71\t- session_id (外键 → sessions，可选关联)\n    72\t- filename (原文件名)\n    73\t- file_path (存储路径)\n    74\t- file_size (文件大小)\n    75\t- file_type (MIME类型)\n    76\t- uploaded_at\n    77\t7. password_analysis（密码分析记录表）\n    78\t- analysis_id (主键)\n    79\t- session_id (外键 → sessions)\n    80\t- user_id (外键 → users)\n    81\t- original_password_hash (原密码哈希)\n    82\t- target_password_hash (目标密码哈希)\n    83\t- hashcat_rule (生成的规则)\n    84\t- strength_score (强度评分 0-100)\n    85\t- is_leaked (是否泄露)\n    86\t- analysis_type (transformation/strength/recommendation)\n    87\t- created_at\n    88\t- 这张表格打算根据不同analysis_type，提供对应不同的metadata进行说明\n    89\t\n    90\t8. user_memories (用户记忆表)\n    91\t\n    92\tmemory_id (主键)\n    93\t\n    94\tuser_id (外键 → users)\n    95\t\n    96\tcontent (文本内容): 例如 \"宠物是一只名叫旺财的狗\", \"喜欢使用特殊符号 # 和 @\", \"生日是 1995年\"\n    97\t\n    98\tmemory_type (枚举):\n    99\t\n   100\t+ PREFERENCE: 偏好（如：喜欢强密码、不喜欢包含 'l' 和 '1'）\n   101\t\n   102\t+ FACT: 事实/背景（如：公司名、宠物名、纪念日）\n   103\t\n   104\t+ CONSTRAINT: 约束（如：密码长度通常设为16位）\n   105\t\n   106\tembedding (向量数据, Blob/Array): 用于语义匹配 (Optional, 推荐)\n   107\t\n   108\tcreated_at: 创建时间\n   109\t\n   110\tlast_accessed_at: 最后一次被调用的时间（用于LRU或权重计算）\n   111\t\n   112\t\n   113\t# 后端\n   114\t\n   115\tMCP这块要改用langgraph框架，需要更新后端文件架构\n   116\t\n   117\t# 5个需求\n   118\t需求分类：BERT-wwm-ext (Whole Word Masking) 或 RoBERTa-wwm-ext\n   119\t\n   120\thttps://huggingface.co/hfl/chinese-roberta-wwm-ext\n   121\thttps://github.com/ymcui/Chinese-BERT-wwm\n   122\t\n   123\t🛡️ Agent 功能需求清单 (User-Facing Features) v2.0\n   124\t1. 口令强度评估 (Strength Assessment)\n   125\t含义： 用户提供一个现有的文本口令，Agent 分析其安全性。\n   126\t用户输入示例：\n   127\t“帮我看看 123456 安全吗？”\n   128\t“测试一下我的密码强度。”\n   129\tAgent 行为： 计算熵值、检查字符组合、匹配常见弱口令列表，给出评分（弱/中/强）及改进建议。\n   130\t主要4个功能：zxcvbn（熵值）、PCFG（结构分析）、passgpt（概率）、LLM（口令重用）\n   131\t在此功能下还需要提供口令增强的建议，这个的具体做法还需要再考虑一下\n   132\t3. 口令生成与推荐 (Password Generation)\n   133\t含义： 用户需要一个新的、安全的文本口令。支持多种输入形式作为“种子”，生成既安全又包含用户个性化信息的口令。\n   134\t输入形式支持：\n   135\t纯文本助记符： 用户直接输入关键词（如“zly”, “2023”）。\n   136\t多模态信息（图片/音频）： 用户上传图片（如宠物照、风景照）或音频（如一段话、环境音）。\n   137\t用户输入示例：\n   138\t“我要注册一个新账号，帮我生成个密码。”\n   139\t“用这张猫的照片帮我生成一个密码。”（上传图片）\n   140\t“根据这段录音生成一个口令。”（上传音频）\n   141\t“我要注册 GitHub，帮我生成一个符合要求的密码。”（触发隐式爬虫/规则库）\n   142\tAgent 行为：\n   143\t多模态解析： 调用 Qwen2-Audio / Qwen2-VL (或 Qwen-Omni) 模型，将图片/音频内容转换为文本描述（如图片 -> \"cat_sleeping_sofa\"，音频 -> \"hello_world\"）。\n   144\t生成逻辑： 将解析出的文本或用户输入的文本作为助记词，通过变换大小写、插入特殊符号、乱序等方式增强安全性。\n   145\t合规适配： 如果识别到目标网站，自动加载该网站的密码策略进行适配。\n   146\t4. 模糊记忆恢复 (Memory Recovery)\n   147\t含义： 用户忘记了旧密码，但记得一些片段。Agent 帮助用户“拼凑”出可能的密码列表，而不是生成新密码。\n   148\t用户输入示例：\n   149\t“我忘了旧密码，只记得里面有 zly 和 2023。”\n   150\t“帮我找回密码，好像是 admin 开头，后面是个年份。”\n   151\tAgent 行为： 基于用户提供的片段，进行排列组合（不随意添加随机字符），生成一份“可能的密码候选列表”供用户尝试。\n   152\t5. 口令泄露检查 (Leak Check)\n   153\t含义： 检查用户的口令或账号是否出现在已知的互联网数据泄露事件中（基于 HIBP 等库）。\n   154\t用户输入示例：\n   155\t“查一下 password123 有没有泄露过。”\n   156\t“我的邮箱 test@example.com 安全吗？”\n   157\tAgent 行为： 查询泄露数据库，返回泄露次数或安全状态。\n   158\t6. 图形口令设置 (Graphical Password) [独立模式]\n   159\t含义： 提供一种非文本的口令设置方式，允许用户通过在图片或地图上选点来作为凭证（不涉及文本转换，位置即密码）。\n   160\t用户输入示例：\n   161\t“我想设置一个图形密码。”\n   162\t“启动地图口令模式。”\n   163\t“我想用图片做密码。”\n   164\tAgent 行为： 识别到该意图后，唤起前端的图形交互组件（弹窗或 Webview），引导用户进行选点操作。\n   165\t📝 意图分类标签更新\n   166\tSTRENGTH_CHECK (强度评估)\n   167\tGENERATION (生成推荐 - 支持 文本/图片/音频 输入)\n   168\tRECOVERY (记忆恢复)\n   169\tLEAK_CHECK (泄露检查)\n   170\tGRAPHICAL_MODE (图形口令 - 独立入口)\n   171\t\n   172\t# 这里还需要加一个记忆模块\n   173\t\n   174\t这里估计要另外设计一张表，就负责保存用户偏好，然后就除了用户输入的原始密码不能存之外其他都可以存\n   175\t\n   176\t在对用户进行回复的时候要考虑一下用户的输出和记忆模块中的东西\n   177\t\n   178\t对于记忆写入，基本上就是对于口令推荐和模糊记忆恢复这两个功能；剩下三个功能用户只需要提供待处理的口令即可，这些口令不写入记忆\n   179\t\n   180\t对于记忆读取，就是作为口令推荐和模糊记忆恢复这两个功能的第一步：\n   181\t\n   182\t调用策略：\n   183\t\n   184\t全量检索 (针对全局偏好)： 总是拉取 memory_type = PREFERENCE 的最近几条记录（例如：“用户不喜欢用问号”）。\n   185\t\n   186\t语义检索 (针对特定任务)：\n   187\t\n   188\t当进入 口令生成 (Generation) 或 记忆恢复 (Recovery) 模式时。\n   189\t\n   190\t使用用户的当前 Query 生成向量，去 user_memories 中检索 Top-K 最相关的事实。\n   191\t\n   192\t例子： 用户输入 \"帮我生成一个包含我女儿名字的密码\"。\n   193\t\n   194\t检索： 检索到记忆 \"女儿的名字叫 Alice\"。\n   195\t\n   196\t\n   197\t最后有关这个模块也可以给用户提供自定义，就像gemini的记忆功能一样，用户输入自己的句子即可+\n   198\t\n   199\t# 整体的流程\n   200\t\n   201\t```mermaid\n   202\tgraph TD\n   203\t    %% --- 样式定义 ---\n   204\t    classDef user fill:#e1f5fe,stroke:#01579b,stroke-width:2px;\n   205\t    classDef brain fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;\n   206\t    classDef memory fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;\n   207\t    classDef action fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;\n   208\t    \n   209\t    %% --- 角色 ---\n   210\t    User((👤 用户)):::user\n   211\t    \n   212\t    %% --- 核心大脑 ---\n   213\t    subgraph Agent_Brain [🤖 PassAgent 核心大脑]\n   214\t        direction TB\n   215\t        Intent[1. 意图识别 &<br>关键词提取]:::brain\n   216\t        Logic[2. 逻辑分发 &<br>参数组装]:::brain\n   217\t        Response[4. 结果整合 &<br>回复生成]:::brain\n   218\t    end\n   219\t\n   220\t    %% --- 记忆模块 ---\n   221\t    subgraph Memory_System [🧠 记忆系统]\n   222\t        MemDB[(长期记忆库<br>User Preferences<br>& Facts)]:::memory\n   223\t        MemRead{读取记忆}:::memory\n   224\t        MemWrite{写入/更新记忆}:::memory\n   225\t    end\n   226\t\n   227\t    %% --- 功能执行层 ---\n   228\t    subgraph Capabilities [🛠️ 功能执行层]\n   229\t        Strength[🛡️ 强度评估]:::action\n   230\t        Gen[🔑 口令生成]:::action\n   231\t        Recover[🧩 记忆恢复]:::action\n   232\t        Leak[⚠️ 泄露检查]:::action\n   233\t        Graph[🎨 图形口令]:::action\n   234\t    end\n   235\t\n   236\t    %% --- 流程连线 ---\n   237\t    \n   238\t    %% 1. 输入与理解\n   239\t    User -- \"输入指令/文件\" --> Intent\n   240\t    \n   241\t    %% 2. 记忆读取 (辅助理解和参数补充)\n   242\t    MemDB -.-> MemRead\n   243\t    MemRead -- \"检索偏好/背景\" --> Intent\n   244\t    \n   245\t    %% 3. 逻辑分发 (将 提取的参数 + 记忆上下文 传给工具)\n   246\t    Intent --> Logic\n   247\t    \n   248\t    %% 4. 执行具体功能\n   249\t    Logic -- \"分发任务\" --> Strength & Gen & Recover & Leak & Graph\n   250\t    \n   251\t    %% 5. 结果返回\n   252\t    Strength & Gen & Recover & Leak & Graph --> Response\n   253\t    \n   254\t    %% 6. 记忆写入 (关键步骤：复用提取的信息)\n   255\t    Intent -- \"提取到的新事实<br>(非敏感信息)\" --> MemWrite\n   256\t    MemWrite -.-> MemDB\n   257\t    \n   258\t    %% 7. 最终反馈\n   259\t    Response -- \"流式输出\" --> User\n   260\t```\n   261\t\n   262\t---\n   263\t\n   264\t不同推理参数：beam search没有topk、tem这些参数\n   265\t\n   266\t不同训练集大小：数据合成方式？\n   267\t\n   268\t不同模型：当时在微信群里说了，不同参数量的模型在性能方面差异不大，选用那种没有经过指令微调的模型效果更好，最后选的是qwen1.7b。后续也可以换其他型号模型测试\n   269\t\n   270\t横向对比\n   271\t\n   272\t生成量：top66到top100的变化不大，最高测试top500（显存生成top1000不够），目前top500的准确率有75%\n   273\t\n   274\t此外测试的有：训练集的不同提示词（这个结果是当top比较小的时候有一些提升，高top下基本没提升）\n   275\t\n   276\t不同训练的学习率：测试了更高学习率，发现对于简单规则性能提升，复杂规则性能下降，估计是在简单规则上有点过拟合\n   277\t\n   278\t统计了我们的模型能猜出不在best66里的规则的占比：（这个在passllm里也干了）\n   279\t\n   280\tqwen3-1.7b_withprompt:\n   281\t\n   282\t处理数据集: test_results_complex.json\n   283\t\n   284\t模型成功: 35\n   285\t\n   286\tBest66 成功: 16\n   287\t\n   288\t重叠: 13\n   289\t\n   290\t模型独有成功: 22\n   291\t\n   292\t处理数据集: test_results_simple.json\n   293\t\n   294\t模型成功: 73\n   295\t\n   296\tBest66 成功: 82\n   297\t\n   298\t重叠: 61\n   299\t\n   300\t模型独有成功: 12\n   301\t\n   302\t处理数据集: test_set.json\n   303\t\n   304\t模型成功: 71\n   305\t\n   306\tBest66 成功: 57\n   307\t\n   308\t重叠: 45\n   309\t\n   310\t此外，考虑会不会是因为将原子规则作为token，那测试集中如果存在没训进去的规则，那模型一定不会输出。但实际上看下来并非，而且将所有规则都token化并不现实\n   311\t\n   312\t---\n   313\t\n   314\t毕设这块，最开始的意图识别agent是先用RoBERTa-wwm-ext区分出大类（目前是5个功能+其他），再针对每个大类去单独设计提示词用LLM去提取关键词。目前是把RoBERTa-wwm-ext的微调训完了（这个的数据集是用deepseek合成的，在测试集上准确率有99以上，还测试了推理速度，非常快可以忽略不计）\n   315\t\n   316\t然后，目前在做关键词提取的测试集用来测试设计的提示词的准确率。但是这里对于强度评估和泄露检查以及多因子认证三个功能比较好实现（相当于前两个提取口令即可，多因子认证提取是用图片还是地图即可），但是对于口令推荐和记忆恢复两功能如何提取还需要考虑\n   317\t\n   318\t最后就是在前端界面这块，一是设计了一个首页，而是对于聊天界面，换用了langgraph的一个开源UI框架，这个是用react做的，对于流式传输有支持，就不需要另外开发了\n   319\t\n   320\t---\n   321\t\n   322\t然后就是可能需要补充的实验：\n   323\t\n   324\t+ pass2edit里的跨站攻击\n   325\t+ passllm中不同模型、不同提示词、不同训练集大小对性能的影响\n   326\t+ 撞库性能：为了发挥hsahcat的性能，比如我先对着一个小密码集（N个）中每个密码都生成top-66的规则，然后在这66\\*N个规则中取出现概率最高的M个规则，把这些规则用上后，能生成M\\*N个口令，拿去撞大的密码库\n   327\t\n   328\t+ \n   329\t\n   330\thttps://chaoge123456.github.io/%E5%8F%A3%E4%BB%A4%E5%AE%89%E5%85%A8%E9%97%AE%E9%A2%98%E7%A0%94%E7%A9%B6.html/#more",
+    "lineOffset": 0,
+    "linesRead": 330,
+    "totalLines": 330
+  }
+
+```
+好，从头到尾给你讲清楚这个 Agent 怎么实现。
+
+## 第一步：定义状态
+
+这是所有节点共享的数据结构，LangGraph 负责在节点之间传递和更新它。
+
+
+# agent/state.py
+from typing import TypedDict, Annotated, Literal
+from langgraph.graph.message import add_messages
+from langchain_core.messages import BaseMessage
+
+class PassAgentState(TypedDict):
+    # 对话消息列表，add_messages 会自动追加而不是覆盖
+    messages: Annotated[list[BaseMessage], add_messages]
+    
+    # 用户信息
+    user_id: str
+    session_id: str
+    
+    # 记忆：从数据库检索到的用户偏好和事实
+    memories: list[dict]
+    
+    # 当前轮次中已经调用过的工具和结果
+    tool_history: list[dict]  # [{"tool": "zxcvbn", "result": {...}}, ...]
+    
+    # planner 的决策
+    next_action: str | None      # 工具名 或 "respond" 或 "retrieve_memory"
+    action_params: dict           # 传给工具的参数
+    
+    # 上传的文件（如果有）
+    uploaded_files: list[dict]    # [{"path": "...", "type": "image/png"}, ...]
+
+
+## 第二步：实现 Planner
+
+这是 Agent 的大脑。它看当前状态，决定下一步做什么。
+
+
+# agent/planner.py
+import json
+from langchain_core.messages import SystemMessage, HumanMessage
+from agent.state import PassAgentState
+from utils.llm_client import chat
+
+PLANNER_SYSTEM_PROMPT = """你是 PassAgent 的规划器。你的任务是根据用户的请求和当前已有的信息，决定下一步该做什么。
+
+## 可用工具
+
+【记忆检索】
+- retrieve_memory: 检索用户的偏好、背景信息。在需要个性化生成或恢复密码时使用。
+
+【强度评估】
+- zxcvbn_check: 计算口令熵值和强度评分。输入：password（明文口令）
+- pcfg_analyze: 分析口令的结构模式（如 L6D4S2）。输入：password
+- passgpt_prob: 用 PassGPT 评估口令被猜中的概率。输入：password
+- weak_list_match: 匹配常见弱口令库。输入：password
+
+【口令生成】
+- multimodal_parse: 将图片或音频转为文本关键词。输入：file_path, file_type
+- generate_password: 基于种子词和约束条件生成安全口令。输入：seeds(list), constraints(dict)
+- fetch_site_policy: 获取目标网站的密码策略。输入：site_name
+
+【记忆恢复】
+- recover_candidates: 基于用户提供的片段，生成可能的密码候选列表。输入：fragments(list), pattern(str|null)
+
+【泄露检查】
+- hibp_check: 查询口令或邮箱是否在已知泄露中。输入：query, query_type(password|email)
+
+【图形口令】
+- graphical_mode: 唤起前端图形口令组件。输入：mode(image|map)
+
+## 决策规则
+1. 如果用户请求涉及口令生成或记忆恢复，且还没有检索过记忆，先调用 retrieve_memory
+2. 根据中间结果判断是否需要继续调用其他工具，不要盲目调用所有工具
+3. 如果信息已经足够回答用户，输出 respond
+4. 强度评估时，zxcvbn_check 是必调的，其他根据需要决定
+5. 不要重复调用已经调用过的工具
+
+## 输出格式
+严格输出 JSON：
+{"action": "工具名或respond", "params": {...}, "reasoning": "一句话说明为什么"}
+"""
+
+def planner_node(state: PassAgentState) -> dict:
+    # 构建上下文：让 LLM 知道当前状态
+    context = f"""
+已检索的用户记忆：{json.dumps(state['memories'], ensure_ascii=False) if state['memories'] else '未检索'}
+已调用的工具及结果：{json.dumps(state['tool_history'], ensure_ascii=False) if state['tool_history'] else '无'}
+用户上传的文件：{json.dumps(state['uploaded_files'], ensure_ascii=False) if state['uploaded_files'] else '无'}
+"""
+    
+    messages = [
+        {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
+        {"role": "user", "content": f"当前状态：\n{context}\n\n对话历史：\n{format_messages(state['messages'])}"}
+    ]
+    
+    response = chat(messages, model="qwen-7b")
+    decision = json.loads(response.choices[0].message.content)
+    
+    return {
+        "next_action": decision["action"],
+        "action_params": decision.get("params", {}),
+    }
+
+
+def format_messages(messages) -> str:
+    """把消息列表格式化成可读文本"""
+    lines = []
+    for msg in messages[-10:]:  # 只取最近10条，避免太长
+        role = "用户" if msg.type == "human" else "助手"
+        lines.append(f"{role}: {msg.content}")
+    return "\n".join(lines)
+
+
+## 第三步：实现各个工具节点
+
+每个工具就是一个函数，接收 state，返回更新后的字段。
+
+
+# agent/tools/strength/zxcvbn_tool.py
+from zxcvbn import zxcvbn
+
+def zxcvbn_check_node(state: PassAgentState) -> dict:
+    password = state["action_params"]["password"]
+    result = zxcvbn(password)
+    
+    tool_result = {
+        "tool": "zxcvbn_check",
+        "result": {
+            "score": result["score"],           # 0-4
+            "guesses_log10": result["guesses_log10"],
+            "crack_time": result["crack_times_display"]["offline_slow_hashing_1e4_per_second"],
+            "feedback": result["feedback"],
+        }
+    }
+    
+    return {
+        "tool_history": state["tool_history"] + [tool_result],
+        "next_action": None,
+        "action_params": {},
+    }
+
+
+
+# agent/tools/leak/hibp_tool.py
+import hashlib
+import httpx
+
+def hibp_check_node(state: PassAgentState) -> dict:
+    query = state["action_params"]["query"]
+    query_type = state["action_params"]["query_type"]
+    
+    if query_type == "password":
+        # k-Anonymity: 只发送 SHA1 前5位
+        sha1 = hashlib.sha1(query.encode()).hexdigest().upper()
+        prefix, suffix = sha1[:5], sha1[5:]
+        resp = httpx.get(f"https://api.pwnedpasswords.com/range/{prefix}")
+        count = 0
+        for line in resp.text.splitlines():
+            h, c = line.split(":")
+            if h == suffix:
+                count = int(c)
+                break
+        result = {"leaked": count > 0, "count": count}
+    else:
+        # 邮箱查询
+        resp = httpx.get(
+            f"https://haveibeenpwned.com/api/v3/breachedaccount/{query}",
+            headers={"hibp-api-key": "YOUR_KEY"}
+        )
+        result = {"leaked": resp.status_code == 200, "breaches": resp.json() if resp.status_code == 200 else []}
+    
+    return {
+        "tool_history": state["tool_history"] + [{"tool": "hibp_check", "result": result}],
+        "next_action": None,
+        "action_params": {},
+    }
+
+
+
+# agent/tools/generation/multimodal_tool.py
+from utils.llm_client import chat
+
+def multimodal_parse_node(state: PassAgentState) -> dict:
+    """调用 Qwen-Omni 把图片/音频转成文本关键词"""
+    file_path = state["action_params"]["file_path"]
+    file_type = state["action_params"]["file_type"]
+    
+    # Qwen-Omni 支持多模态输入
+    if "image" in file_type:
+        messages = [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": f"file://{file_path}"}},
+            {"type": "text", "text": "请用3-5个英文关键词描述这张图片的核心内容，用下划线连接，例如：cat_sleeping_sofa"}
+        ]}]
+    elif "audio" in file_type:
+        messages = [{"role": "user", "content": [
+            {"type": "audio_url", "audio_url": {"url": f"file://{file_path}"}},
+            {"type": "text", "text": "请将这段音频的核心内容转为3-5个英文关键词，用下划线连接"}
+        ]}]
+    
+    response = chat(messages, model="qwen-omni")
+    keywords = response.choices[0].message.content.strip()
+    
+    return {
+        "tool_history": state["tool_history"] + [{"tool": "multimodal_parse", "result": {"keywords": keywords}}],
+        "next_action": None,
+        "action_params": {},
+    }
+
+
+
+# agent/tools/generation/generate_tool.py
+import random
+import string
+
+def generate_password_node(state: PassAgentState) -> dict:
+    seeds = state["action_params"]["seeds"]           # ["cat", "sofa", "2023"]
+    constraints = state["action_params"].get("constraints", {})
+    
+    min_length = constraints.get("min_length", 12)
+    require_upper = constraints.get("require_upper", True)
+    require_digit = constraints.get("require_digit", True)
+    require_special = constraints.get("require_special", True)
+    
+    # 基于种子词做变换
+    candidates = []
+    for _ in range(5):  # 生成5个候选
+        base = "_".join(seeds)
+        # 随机大小写变换
+        transformed = ""
+        for ch in base:
+            if random.random() > 0.5 and ch.isalpha():
+                transformed += ch.upper()
+            else:
+                transformed += ch
+        # 插入特殊符号和数字
+        specials = "!@#$%&*"
+        if require_special:
+            pos = random.randint(0, len(transformed))
+            transformed = transformed[:pos] + random.choice(specials) + transformed[pos:]
+        if require_digit:
+            transformed += str(random.randint(10, 99))
+        # 补齐长度
+        while len(transformed) < min_length:
+            transformed += random.choice(string.ascii_letters + string.digits)
+        candidates.append(transformed)
+    
+    return {
+        "tool_history": state["tool_history"] + [{"tool": "generate_password", "result": {"candidates": candidates}}],
+        "next_action": None,
+        "action_params": {},
+    }
+
+
+
+# agent/tools/recovery/recover_tool.py
+import itertools
+
+def recover_candidates_node(state: PassAgentState) -> dict:
+    fragments = state["action_params"]["fragments"]   # ["admin", "2023"]
+    pattern = state["action_params"].get("pattern")    # "admin开头" -> "admin*"
+    
+    candidates = []
+    separators = ["", "_", "-", ".", "@", "#", "!"]
+    
+    # 排列组合所有片段
+    for perm in itertools.permutations(fragments):
+        for sep in separators:
+            candidate = sep.join(perm)
+            candidates.append(candidate)
+            # 常见变体：首字母大写
+            candidates.append(candidate.capitalize())
+            candidates.append(candidate.upper())
+    
+    # 如果有模式约束，过滤
+    if pattern and pattern.endswith("*"):
+        prefix = pattern[:-1]
+        candidates = [c for c in candidates if c.startswith(prefix)]
+    
+    # 去重
+    candidates = list(dict.fromkeys(candidates))[:50]
+    
+    return {
+        "tool_history": state["tool_history"] + [{"tool": "recover_candidates", "result": {"candidates": candidates}}],
+        "next_action": None,
+        "action_params": {},
+    }
+
+
+## 第四步：实现记忆模块
+
+
+# agent/memory/reader.py
+from database.connection import get_db
+
+def retrieve_memory_node(state: PassAgentState) -> dict:
+    user_id = state["user_id"]
+    db = get_db()
+    
+    # 1. 全量拉偏好和约束
+    preferences = db.execute(
+        """SELECT content, memory_type FROM user_memories 
+           WHERE user_id = %s AND memory_type IN ('PREFERENCE', 'CONSTRAINT')
+           ORDER BY last_accessed_at DESC LIMIT 10""",
+        (user_id,)
+    ).fetchall()
+    
+    # 2. 拉事实（量不大，全拉）
+    facts = db.execute(
+        """SELECT content, memory_type FROM user_memories 
+           WHERE user_id = %s AND memory_type = 'FACT'
+           ORDER BY last_accessed_at DESC LIMIT 20""",
+        (user_id,)
+    ).fetchall()
+    
+    memories = [{"content": r[0], "type": r[1]} for r in preferences + facts]
+    
+    # 更新 last_accessed_at
+    memory_ids = [r[0] for r in preferences + facts]
+    if memory_ids:
+        db.execute(
+            "UPDATE user_memories SET last_accessed_at = NOW() WHERE memory_id = ANY(%s)",
+            (memory_ids,)
+        )
+    
+    return {
+        "memories": memories,
+        "next_action": None,
+        "action_params": {},
+    }
+
+
+
+# agent/memory/writer.py
+from utils.llm_client import chat
+import json
+
+def write_memory_node(state: PassAgentState) -> dict:
+    """让 LLM 从对话中提取值得记住的信息"""
+    
+    # 只在生成和恢复场景下写记忆
+    has_gen_or_recover = any(
+        t["tool"] in ("generate_password", "recover_candidates") 
+        for t in state["tool_history"]
+    )
+    if not has_gen_or_recover:
+        return state
+    
+    messages = [{"role": "system", "content": """从以下对话中提取值得长期记住的用户信息。
+规则：
+1. 绝对不要记录任何密码、口令原文
+2. 只记录偏好、事实、约束
+3. 如果没有新信息，返回空列表
+
+输出 JSON 列表：[{"content": "...", "type": "PREFERENCE|FACT|CONSTRAINT"}]"""},
+        {"role": "user", "content": format_conversation(state["messages"])}
+    ]
+    
+    response = chat(messages, model="qwen-7b")
+    new_memories = json.loads(response.choices[0].message.content)
+    
+    if new_memories:
+        db = get_db()
+        for mem in new_memories:
+            db.execute(
+                """INSERT INTO user_memories (user_id, content, memory_type, created_at, last_accessed_at)
+                   VALUES (%s, %s, %s, NOW(), NOW())""",
+                (state["user_id"], mem["content"], mem["type"])
+            )
+        db.commit()
+    
+    return state
+
+
+## 第五步：实现回复生成节点
+
+
+# agent/response.py
+from utils.llm_client import chat_stream
+import json
+
+RESPONSE_SYSTEM_PROMPT = """你是 PassAgent，一个专业的口令安全助手。
+根据工具的分析结果，用清晰友好的中文回复用户。
+
+回复要求：
+1. 先给出结论，再展开细节
+2. 如果是强度评估，给出评分和具体改进建议
+3. 如果是口令生成，展示候选口令并解释助记逻辑
+4. 如果是记忆恢复，展示候选列表并提示用户逐个尝试
+5. 如果是泄露检查，明确告知是否泄露及建议
+6. 不要在回复中暴露工具的原始 JSON 输出
+"""
+
+def respond_node(state: PassAgentState) -> dict:
+    context = f"""
+用户记忆：{json.dumps(state['memories'], ensure_ascii=False)}
+工具调用结果：{json.dumps(state['tool_history'], ensure_ascii=False)}
+"""
+    
+    messages = [
+        {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
+        {"role": "user", "content": f"上下文：\n{context}\n\n请根据以上信息回复用户的最新消息。"}
+    ]
+    
+    # 加入对话历史
+    for msg in state["messages"][-6:]:
+        role = "user" if msg.type == "human" else "assistant"
+        messages.append({"role": role, "content": msg.content})
+    
+    # 流式生成 — 这里返回的是生成器，由 FastAPI 的 SSE 端点消费
+    response = chat_stream(messages, model="qwen-7b")
+    
+    full_response = ""
+    for chunk in response:
+        if chunk.choices[0].delta.content:
+            full_response += chunk.choices[0].delta.content
+    
+    return {
+        "messages": [{"role": "assistant", "content": full_response}],
+    }
+
+
+## 第六步：组装状态图
+
+
+# agent/graph.py
+from langgraph.graph import StateGraph, END
+from agent.state import PassAgentState
+from agent.planner import planner_node
+from agent.response import respond_node
+from agent.memory.reader import retrieve_memory_node
+from agent.memory.writer import write_memory_node
+from agent.tools.strength.zxcvbn_tool import zxcvbn_check_node
+from agent.tools.strength.pcfg_tool import pcfg_analyze_node
+from agent.tools.strength.passgpt_tool import passgpt_prob_node
+from agent.tools.leak.hibp_tool import hibp_check_node
+from agent.tools.generation.multimodal_tool import multimodal_parse_node
+from agent.tools.generation.generate_tool import generate_password_node
+from agent.tools.generation.site_policy_tool import fetch_site_policy_node
+from agent.tools.recovery.recover_tool import recover_candidates_node
+from agent.tools.graphical.graphical_tool import graphical_mode_node
+
+# 所有工具节点的映射
+TOOL_NODES = {
+    "retrieve_memory": retrieve_memory_node,
+    "zxcvbn_check": zxcvbn_check_node,
+    "pcfg_analyze": pcfg_analyze_node,
+    "passgpt_prob": passgpt_prob_node,
+    "weak_list_match": weak_list_match_node,
+    "hibp_check": hibp_check_node,
+    "multimodal_parse": multimodal_parse_node,
+    "generate_password": generate_password_node,
+    "fetch_site_policy": fetch_site_policy_node,
+    "recover_candidates": recover_candidates_node,
+    "graphical_mode": graphical_mode_node,
+}
+
+def route_next_action(state: PassAgentState) -> str:
+    """根据 planner 的决策路由到对应节点"""
+    action = state.get("next_action")
+    if action == "respond" or action is None:
+        return "respond"
+    if action in TOOL_NODES:
+        return action
+    # 兜底：未知 action 直接回复
+    return "respond"
+
+def build_graph() -> StateGraph:
+    graph = StateGraph(PassAgentState)
+    
+    # 注册所有节点
+    graph.add_node("planner", planner_node)
+    graph.add_node("respond", respond_node)
+    graph.add_node("write_memory", write_memory_node)
+    
+    for name, func in TOOL_NODES.items():
+        graph.add_node(name, func)
+    
+    # 入口 → planner
+    graph.set_entry_point("planner")
+    
+    # planner → 条件路由
+    route_map = {name: name for name in TOOL_NODES}
+    route_map["respond"] = "respond"
+    graph.add_conditional_edges("planner", route_next_action, route_map)
+    
+    # 所有工具 → 回到 planner（让 LLM 决定是否继续）
+    for name in TOOL_NODES:
+        graph.add_edge(name, "planner")
+    
+    # respond → write_memory → END
+    graph.add_edge("respond", "write_memory")
+    graph.add_edge("write_memory", END)
+    
+    return graph.compile()
+
+# 编译好的 Agent，供外部调用
+agent_app = build_graph()
+
+
+## 第七步：FastAPI 接入
+
+
+# routers/chat.py
+from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
+from agent.graph import agent_app
+from langchain_core.messages import HumanMessage
+import json
+
+router = APIRouter()
+
+@router.post("/api/chat/{session_id}")
+async def chat_endpoint(session_id: str, request: Request):
+    body = await request.json()
+    user_message = body["message"]
+    user_id = body["user_id"]
+    uploaded_files = body.get("files", [])
+    
+    # 构建初始状态
+    initial_state = {
+        "messages": [HumanMessage(content=user_message)],
+        "user_id": user_id,
+        "session_id": session_id,
+        "memories": [],
+        "tool_history": [],
+        "next_action": None,
+        "action_params": {},
+        "uploaded_files": uploaded_files,
+    }
+    
+    async def event_stream():
+        # stream_mode="updates" 会在每个节点执行完后推送一次
+        async for event in agent_app.astream(initial_state, stream_mode="updates"):
+            for node_name, node_output in event.items():
+                yield f"data: {json.dumps({'node': node_name, 'data': serialize(node_output)}, ensure_ascii=False)}\n\n"
+        yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def serialize(obj):
+    """简单序列化，处理不能直接 JSON 化的对象"""
+    if isinstance(obj, dict):
+        return {k: serialize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [serialize(i) for i in obj]
+    if hasattr(obj, 'content'):
+        return {"type": obj.type, "content": obj.content}
+    return obj
+
+
+## 整体执行流程示例
+
+用户输入："帮我看看 zly2023! 安全吗？顺便查查有没有泄露"
+
+
+1. [planner] 看到用户要强度评估+泄露检查
+   → 决策：先调 zxcvbn_check，params: {password: "zly2023!"}
+
+2. [zxcvbn_check] 执行，返回 score=1, 弱
+   → 回到 planner
+
+3. [planner] zxcvbn 说很弱，再跑个 pcfg 看看结构
+   → 决策：调 pcfg_analyze，params: {password: "zly2023!"}
+
+4. [pcfg_analyze] 返回结构 L3D4S1，常见模式
+   → 回到 planner
+
+5. [planner] 强度评估够了，用户还要查泄露
+   → 决策：调 hibp_check，params: {query: "zly2023!", query_type: "password"}
+
+6. [hibp_check] 返回 leaked=true, count=1234
+   → 回到 planner
+
+7. [planner] 两个任务都完成了，信息足够
+   → 决策：respond
+
+8. [respond] 整合所有 tool_history，生成回复：
+   "你的口令 zly2023! 安全性较弱（评分 1/4）...
+    结构为 L3D4S1，属于常见模式...
+    且已在泄露数据库中出现 1234 次，建议立即更换..."
+
+9. [write_memory] 检查：这轮没有生成/恢复操作，跳过写入
+
+10. → END
+
+
+这就是完整的实现。核心就是 planner 节点的 prompt 设计——它决定了 Agent 的"智能程度"。你后续调优的重点也在这个 prompt 上：让 LLM 知道什么时候该调什么工具、什么时候该停。
+```
+
+**user**: 
+
+```
+目前支持function call的最优秀的模型是？要是开源的支持本地部署的。且显存占用不高，此外，你刚才说的bit4量化对function call的性能有影响吗？
+```
+
+**assistant**: 
+
+```
+## Function Calling 开源模型推荐
+
+目前最能打的几个：
+
+| 模型 | 参数量 | FP16 显存 | 4bit 显存 | Function Call 能力 |
+|------|--------|-----------|-----------|-------------------|
+| Qwen2.5-7B-Instruct | 7B | ~14G | ~4.5G | 很强，原生支持 tool calling，Berkeley Function Calling Leaderboard 上开源第一梯队 |
+| Qwen2.5-3B-Instruct | 3B | ~6G | ~2.5G | 不错，小模型里最能打的 |
+| Qwen3-8B | 8B | ~16G | ~5G | 最新的，推理能力更强，支持 thinking mode |
+| GLM-4-9B-Chat | 9B | ~18G | ~6G | 原生支持，中文场景表现好 |
+| Llama-3.1-8B-Instruct | 8B | ~16G | ~5G | 支持，但中文弱一些 |
+| Mistral-7B-Instruct-v0.3 | 7B | ~14G | ~4.5G | 支持 function call，英文场景强 |
+
+你的场景是中文为主 + 口令安全，推荐 Qwen2.5-7B-Instruct 或 Qwen3-8B。理由：
+
+- 中文能力最好
+- Function calling 是训练时就内置的，不是靠 prompt hack
+- vLLM 原生支持它的 tool calling 格式
+- 你项目里已经在用 Qwen 系列了，生态统一
+
+## 4bit 量化对 Function Calling 的影响
+
+有影响，但没你想的那么大。具体来说：
+
+对通用对话质量的影响：几乎感知不到，大概掉 1-2%。
+
+对 function calling 的影响：稍微大一点，大概 3-5% 的准确率下降。主要体现在：
+
+- 参数提取偶尔会出错（比如把 `"password"` 字段漏掉）
+- 复杂的多工具调用场景下，JSON 格式偶尔会畸形
+- 边界 case 的判断能力下降（比如该不该调某个工具的决策模糊时）
+
+但对你这个项目来说问题不大，原因是：
+
+1. 你的工具数量不多（十来个），不是那种几十上百个工具的复杂场景
+2. 每次 planner 只需要选一个工具，不需要一次并行调多个
+3. 参数结构简单（基本就是 password、file_path 这些）
+4. 就算偶尔出错，回到 planner 重新决策就行，LangGraph 的循环机制天然容错
+
+## 实际建议
+
+
+model_service 容器里的模型分配：
+
+1. Qwen2.5-7B-Instruct (4bit AWQ)  → ~4.5G  → Planner + 回复生成 + 记忆提取（常驻）
+2. 微调 Qwen-1.7B (4bit)           → ~1.5G  → 规则生成 / PassGPT（常驻）
+3. Qwen2-VL-7B (4bit)              → ~5G    → 多模态，按需加载
+
+常驻总计 ~6G，峰值 ~11G，单卡 24G 绰绰有余
+
+
+如果你想进一步降低风险，可以在 planner 的输出上加一层简单的校验：
+
+
+def planner_node(state: PassAgentState) -> dict:
+    response = chat(messages, model="qwen2.5-7b-instruct-awq")
+    
+    try:
+        decision = json.loads(response.choices[0].message.content)
+    except json.JSONDecodeError:
+        # 4bit 偶尔输出格式不对，重试一次
+        response = chat(messages, model="qwen2.5-7b-instruct-awq", temperature=0.1)
+        decision = json.loads(response.choices[0].message.content)
+    
+    # 校验 action 是否合法
+    valid_actions = set(TOOL_NODES.keys()) | {"respond"}
+    if decision.get("action") not in valid_actions:
+        decision["action"] = "respond"  # 兜底
+    
+    return {
+        "next_action": decision["action"],
+        "action_params": decision.get("params", {}),
+    }
+
+
+这样即使量化导致偶尔输出异常，也不会让整个 Agent 挂掉。
+```
+
+**user**: 
+
+```
+按照我之前的规划，最终是要给用户提供一份详尽的报告的，这也算是一个skill？其实最开始的那个意图识别也是一个skill？
+以及当用户输入的内容和目前的5个功能无关时怎么办？或者他的需求有多个功能怎么办？
+```
+
+**assistant**: 
+
+```
+## 报告生成
+
+不算 skill，算是 respond 节点的一个增强模式。因为报告不需要调用新的工具，它只是把已有的 `tool_history` 里的结果重新组织成一个结构化的文档。
+
+做法是在 respond 节点里根据 `tool_history` 的丰富程度决定输出模式：
+
+
+# agent/response.py
+def respond_node(state: PassAgentState) -> dict:
+    # 如果调用了3个以上工具，说明是一次比较完整的分析，生成报告
+    if len(state["tool_history"]) >= 3:
+        prompt = REPORT_PROMPT  # 详细报告模板
+    else:
+        prompt = SIMPLE_RESPONSE_PROMPT  # 简单回复
+    
+    # ...
+
+
+或者更优雅一点，让 planner 在决定 `respond` 的时候同时指定输出模式：
+
+
+# planner 的输出
+{"action": "respond", "params": {"mode": "report"}, "reasoning": "已完成强度评估+泄露检查+结构分析，生成完整报告"}
+{"action": "respond", "params": {"mode": "simple"}, "reasoning": "只是简单查了一下泄露，简短回复即可"}
+
+
+## 意图识别
+
+也不算 skill。意图识别是 planner 内部自然完成的事情——它读了用户消息，理解了意图，然后决定调什么工具。你不需要把它单独拎出来当一个节点。
+
+如果你非要在论文里体现"意图识别"这个环节，可以在 planner 的输出里加一个字段：
+
+
+{
+    "intent": "STRENGTH_CHECK + LEAK_CHECK",
+    "action": "zxcvbn_check",
+    "params": {"password": "zly2023!"},
+    "reasoning": "用户要求评估强度并检查泄露，先做强度评估"
+}
+
+
+这样你在 `tool_invocations` 表里就能记录每次识别出的意图，论文里可以分析意图分布，但它不是一个独立的执行节点。
+
+## 用户输入和 5 个功能无关
+
+这是一定会发生的。两种情况：
+
+第一种，闲聊/无关问题："今天天气怎么样"、"你是谁"
+
+planner 直接输出 `respond`，不调任何工具。在 planner prompt 里加一条规则就行：
+
+
+如果用户的问题与口令安全无关，直接输出 respond，不调用任何工具。
+回复时礼貌地引导用户回到口令安全相关的话题。
+
+
+第二种，打擦边球："帮我破解这个密码"、"怎么攻击别人的账号"
+
+这是安全红线，planner prompt 里写死拒绝：
+
+
+如果用户请求涉及攻击、破解他人密码等恶意行为，直接 respond 拒绝，不调用任何工具。
+
+
+## 用户需求涉及多个功能
+
+这恰恰是 Agent 架构的优势所在。流水线做不到，但 planner 的循环机制天然支持。
+
+比如用户说："帮我看看 zly2023! 安全吗？如果不安全就帮我生成个新的"
+
+
+1. [planner] 识别到两个意图：强度评估 + 条件性生成
+   → 先做强度评估：调 zxcvbn_check
+
+2. [zxcvbn_check] score=1，弱
+   → 回到 planner
+
+3. [planner] 弱口令，用户说了不安全就生成新的
+   → 调 hibp_check 顺便查下泄露
+
+4. [hibp_check] 已泄露
+   → 回到 planner
+
+5. [planner] 确认不安全，现在要生成新口令
+   → 先检索记忆：调 retrieve_memory
+
+6. [retrieve_memory] 返回：用户偏好16位、喜欢用#
+   → 回到 planner
+
+7. [planner] 有了偏好信息
+   → 调 generate_password，seeds=["zly","2023"], constraints={min_length:16, require_special:true}
+
+8. [generate_password] 返回5个候选
+   → 回到 planner
+
+9. [planner] 强度评估做了、泄露查了、新密码也生成了
+   → respond，mode=report
+
+
+这整个过程 planner 自己编排的，你代码里不需要写任何 if-else 来处理"多功能组合"的情况。LLM 自己会根据上下文和 `tool_history` 判断还需不需要继续。
+
+唯一要注意的是防止无限循环。加一个最大步数限制：
+
+
+# agent/graph.py
+MAX_STEPS = 10
+
+def route_next_action(state: PassAgentState) -> str:
+    # 防止无限循环
+    if len(state["tool_history"]) >= MAX_STEPS:
+        return "respond"
+    
+    action = state.get("next_action")
+    if action == "respond" or action is None:
+        return "respond"
+    if action in TOOL_NODES:
+        return action
+    return "respond"
+
+
+## 总结一下你的 Agent 里到底有哪些"组件"
+
+
+组件（你要实现的）          不是组件（是组件的行为）
+─────────────────          ──────────────────────
+State                      意图识别（planner 内部完成）
+Planner                    报告生成（respond 的一种模式）
+Tools（10+ 个）            多功能编排（planner 循环自动完成）
+Memory（读 + 写）          闲聊/拒绝（planner 直接 respond）
+Response
+Router（条件边）
+
+
+你论文里可以把意图识别、多功能编排这些当作 Agent 的"能力"来描述，但在代码实现上它们不是独立模块，而是 planner + LangGraph 循环机制自然涌现出来的行为。这也是 Agent 比流水线高级的地方——你不需要为每种组合写代码，LLM 自己搞定。
+```
+
+**user**: 
+
+```
+那你觉得这里的多用户有做的必要吗？不过虽然是个毕设，那个老师也要求我最后要有一个调查问卷这种，就是让大众去试用一下看看各方面能力。
+其实之前我问过gemini，他觉得只有通用的agent才需要做到你目前这种模式，而垂域的agent很多都是直接流水线？不过我觉得还是做成你这种更好。
+
+此外，我还希望前端能够展示目前这个agent在干什么，这个能做到吗
+```
+
+**assistant**: 
+
+```
+## 多用户
+
+既然老师要求做问卷让大众试用，那多用户是必须的，不是可选项。不过好消息是你数据库表已经设计好了 user_id 外键都有，后端加个 JWT 认证中间件就行，工作量不大。
+
+## 垂域 Agent 该不该用流水线
+
+Gemini 说的不算错，很多垂域 Agent 确实是流水线，因为业务流程固定、不需要动态决策。但你这个项目恰好不适合纯流水线，原因是：
+
+- 你有 5 个功能，用户一句话可能触发多个
+- 强度评估的深度是动态的（弱密码要多跑几个工具，强密码跑一个就够了）
+- 记忆模块的调用是条件性的（只有生成和恢复才需要）
+- 老师要求的"Agent"标签，你得让它名副其实
+
+而且从工作量上说，用 LangGraph 搭动态路由和写一堆 if-else 流水线差不多，但前者在论文里能讲的东西多得多。
+
+## 前端展示 Agent 执行过程
+
+完全能做到，而且这是一个很好的加分项。LangGraph 的 `stream_mode="updates"` 天然支持——每个节点执行完都会推送一个事件，前端拿到后实时渲染就行。
+
+后端已经有了，就是之前写的 SSE 端点，每个节点完成时推送：
+
+
+# routers/chat.py
+async def event_stream():
+    async for event in agent_app.astream(initial_state, stream_mode="updates"):
+        for node_name, node_output in event.items():
+            # 每个节点完成时推一条消息
+            yield f"data: {json.dumps({
+                'node': node_name,
+                'type': 'tool_start' if node_name != 'respond' else 'response',
+                'data': sanitize_output(node_name, node_output)
+            }, ensure_ascii=False)}\n\n"
+    yield "data: [DONE]\n\n"
+
+def sanitize_output(node_name: str, output: dict) -> dict:
+    """脱敏：不要把原始密码推到前端"""
+    if node_name == "planner":
+        return {
+            "action": output.get("next_action"),
+            "reasoning": output.get("action_params", {}).get("reasoning", ""),
+        }
+    if node_name in ("zxcvbn_check", "pcfg_analyze", "passgpt_prob"):
+        # 只返回分析结果，不返回原始密码
+        result = output.get("tool_history", [{}])[-1].get("result", {})
+        return {"summary": result}
+    if node_name == "respond":
+        return {"content": output.get("messages", [{}])[-1].get("content", "")}
+    return {"status": "completed"}
+
+
+前端的 SSE 数据流长这样：
+
+
+{"node": "planner",        "type": "tool_start", "data": {"action": "zxcvbn_check", "reasoning": "先评估熵值"}}
+{"node": "zxcvbn_check",   "type": "tool_start", "data": {"summary": {"score": 1, "crack_time": "3 seconds"}}}
+{"node": "planner",        "type": "tool_start", "data": {"action": "hibp_check", "reasoning": "强度很弱，查一下泄露"}}
+{"node": "hibp_check",     "type": "tool_start", "data": {"summary": {"leaked": true, "count": 1234}}}
+{"node": "planner",        "type": "tool_start", "data": {"action": "respond", "reasoning": "信息足够，生成报告"}}
+{"node": "respond",        "type": "response",   "data": {"content": "你的口令安全性较弱..."}}
+
+
+前端拿到这些事件后，渲染成一个步骤条：
+
+
+// components/AgentSteps.tsx
+interface Step {
+  node: string;
+  type: string;
+  data: any;
+  status: 'running' | 'done';
+}
+
+export function AgentSteps({ steps }: { steps: Step[] }) {
+  const toolLabels: Record<string, string> = {
+    planner: '🤔 规划中',
+    retrieve_memory: '🧠 检索记忆',
+    zxcvbn_check: '🔐 熵值评估',
+    pcfg_analyze: '📊 结构分析',
+    passgpt_prob: '🎲 概率评估',
+    hibp_check: '⚠️ 泄露检查',
+    generate_password: '🔑 生成口令',
+    recover_candidates: '🧩 恢复候选',
+    multimodal_parse: '🖼️ 多模态解析',
+    respond: '💬 生成回复',
+  };
+
+  return (
+    <div className="flex flex-col gap-2 mb-4">
+      {steps.filter(s => s.node !== 'write_memory').map((step, i) => (
+        <div key={i} className="flex items-center gap-3 text-sm">
+          {/* 状态指示器 */}
+          <div className={`w-2 h-2 rounded-full ${
+            step.status === 'running' ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'
+          }`} />
+          
+          {/* 步骤名称 */}
+          <span className="text-gray-600">
+            {toolLabels[step.node] || step.node}
+          </span>
+          
+          {/* 摘要信息（可折叠） */}
+          {step.node === 'planner' && step.data?.reasoning && (
+            <span className="text-gray-400 text-xs">— {step.data.reasoning}</span>
+          )}
+          {step.node === 'zxcvbn_check' && step.data?.summary && (
+            <span className="text-gray-400 text-xs">
+              — 评分 {step.data.summary.score}/4
+            </span>
+          )}
+          {step.node === 'hibp_check' && step.data?.summary && (
+            <span className={`text-xs ${step.data.summary.leaked ? 'text-red-500' : 'text-green-500'}`}>
+              — {step.data.summary.leaked ? `已泄露 ${step.data.summary.count} 次` : '未泄露'}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+在聊天界面里，每条 assistant 消息上方展示这个步骤条：
+
+
+// components/ChatMessage.tsx
+export function AssistantMessage({ steps, content }: { steps: Step[], content: string }) {
+  const [showSteps, setShowSteps] = useState(true);
+  
+  return (
+    <div className="assistant-message">
+      {/* 可折叠的执行过程 */}
+      <button 
+        onClick={() => setShowSteps(!showSteps)}
+        className="text-xs text-gray-400 mb-2"
+      >
+        {showSteps ? '▼' : '▶'} 执行过程（{steps.length} 步）
+      </button>
+      
+      {showSteps && <AgentSteps steps={steps} />}
+      
+      {/* 分隔线 */}
+      <hr className="my-2 border-gray-200" />
+      
+      {/* 正式回复（流式渲染） */}
+      <div className="prose">
+        <Markdown>{content}</Markdown>
+      </div>
+    </div>
+  );
+}
+
+
+最终效果大概是这样：
+
+
+┌─────────────────────────────────────────┐
+│ ▼ 执行过程（5 步）                        │
+│                                          │
+│ 🟢 🤔 规划中 — 先评估熵值                  │
+│ 🟢 🔐 熵值评估 — 评分 1/4                  │
+│ 🟢 🤔 规划中 — 强度很弱，查一下泄露         │
+│ 🟢 ⚠️ 泄露检查 — 已泄露 1234 次            │
+│ 🟢 🤔 规划中 — 信息足够，生成报告           │
+│ ──────────────────────────────────────── │
+│                                          │
+│ 你的口令 *** 安全性较弱（评分 1/4）。       │
+│                                          │
+│ 📊 结构分析：L3D4S1，属于常见模式...        │
+│ ⚠️ 该口令已在泄露数据库中出现 1234 次...    │
+│ 💡 建议：...                              │
+│                                          │
+│         🔄 重新生成  📋 复制  👍 👎  📄 PDF │
+└─────────────────────────────────────────┘
+
+
+这个展示效果在答辩的时候非常加分——老师能直观看到 Agent 的决策过程，而不是一个黑盒直接吐结果。也能很好地证明你做的是 Agent 而不是流水线，因为每次执行的步骤数和顺序可能不同。
+```
+
+**user**: 
+
+```
+function call和mcp有啥区别？还有什么工具调用方法？
+```
+
+**assistant**: 
+
+```
+这几个概念确实容易混，一次性讲清楚。
+
+## 本质区别
+
+它们解决的是同一个问题的不同层面：怎么让 LLM 调用外部工具。
+
+
+LLM 想调用工具
+    │
+    ├── 第一个问题：LLM 怎么表达"我要调工具"？  → Function Calling / Tool Use
+    │
+    └── 第二个问题：工具怎么被发现和连接？        → MCP / 自定义 HTTP / 直接函数调用
+
+
+## Function Calling（函数调用）
+
+这是 LLM 层面的能力。模型在训练时就学会了：当需要外部信息时，输出一段结构化的 JSON 来表示"我要调这个函数，参数是这些"。
+
+
+// 你告诉模型有哪些工具
+{"name": "zxcvbn_check", "parameters": {"password": {"type": "string"}}}
+
+// 用户说："帮我看看 abc123 安全吗"
+
+// 模型输出（不是自然语言，是结构化调用）
+{"function_call": {"name": "zxcvbn_check", "arguments": {"password": "abc123"}}}
+
+
+模型本身不执行任何东西，它只是输出了一段 JSON。谁来执行、怎么执行，它不管。
+
+## MCP（Model Context Protocol）
+
+这是 Anthropic 提出的一个连接协议。它规定了工具怎么注册、怎么被发现、怎么被调用的标准格式。
+
+
+MCP Server（工具提供方）          MCP Client（调用方）
+┌──────────────────┐            ┌──────────────────┐
+│ 暴露工具列表：     │◄──发现──── │ "你有哪些工具？"   │
+│ - zxcvbn_check   │            │                  │
+│ - hibp_check     │────调用───►│ 调用 zxcvbn_check │
+│                  │◄──返回──── │ 拿到结果          │
+└──────────────────┘            └──────────────────┘
+     通过 stdio / SSE / HTTP 通信
+
+
+MCP 不关心 LLM 怎么决定调哪个工具，它只管"工具怎么接进来"。
+
+## 所有工具调用方法对比
+
+
+方法              LLM 怎么决策          工具怎么执行           适用场景
+──────────────────────────────────────
+1. Function Call  模型原生输出 JSON     你的代码解析后执行      最主流，模型直接支持
+2. MCP            同上（决策还是 LLM）  通过 MCP 协议远程调用   工具分布在不同服务/进程
+3. ReAct Prompt   模型输出文本格式      你用正则解析后执行      模型不支持 function call 时的替代方案
+4. 直接函数调用    代码里 if-else 路由   直接调 Python 函数     工具在同一进程内，最简单
+5. OpenAI Tools   Function Call 的升级  支持并行多工具调用      需要一次调多个工具
+
+
+逐个展开：
+
+### 1. Function Calling
+
+
+# 告诉模型有哪些工具
+tools = [{
+    "type": "function",
+    "function": {
+        "name": "zxcvbn_check",
+        "description": "计算口令的熵值和强度评分",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "password": {"type": "string", "description": "待评估的口令"}
+            },
+            "required": ["password"]
+        }
+    }
+}]
+
+response = client.chat.completions.create(
+    model="qwen2.5-7b-instruct",
+    messages=messages,
+    tools=tools,          # 传入工具定义
+    tool_choice="auto"    # 让模型自己决定要不要调
+)
+
+# 模型可能返回
+response.choices[0].message.tool_calls[0]
+# → {"function": {"name": "zxcvbn_check", "arguments": "{\"password\": \"abc123\"}"}}
+
+# 你拿到后自己执行
+result = zxcvbn_check("abc123")
+
+
+### 2. MCP
+
+
+# MCP Server 端（工具提供方）
+from mcp.server import Server
+
+server = Server("password-tools")
+
+@server.tool()
+def zxcvbn_check(password: str) -> dict:
+    """计算口令的熵值和强度评分"""
+    return zxcvbn(password)
+
+# MCP Client 端（调用方）
+from mcp.client import Client
+
+async with Client("http://tool-server:8080") as client:
+    tools = await client.list_tools()       # 发现工具
+    result = await client.call_tool(        # 调用工具
+        "zxcvbn_check", 
+        {"password": "abc123"}
+    )
+
+
+### 3. ReAct Prompt（不依赖模型原生能力）
+
+
+# 当模型不支持 function call 时，用 prompt 模拟
+REACT_PROMPT = """你可以使用以下工具，用这个格式调用：
+
+Thought: 我需要检查这个密码的强度
+Action: zxcvbn_check
+Action Input: {"password": "abc123"}
+
+等待工具返回结果后继续思考。当你有了最终答案：
+Thought: 我已经有足够信息了
+Final Answer: 你的密码很弱..."""
+
+# 你用正则解析模型输出
+import re
+action_match = re.search(r'Action: (\w+)\nAction Input: ({.*})', response)
+tool_name = action_match.group(1)
+tool_input = json.loads(action_match.group(2))
+
+
+### 4. 直接函数调用（你目前 LangGraph 里用的方式）
+
+
+# 最简单，planner 输出工具名，你直接路由到对应函数
+TOOL_NODES = {
+    "zxcvbn_check": zxcvbn_check_node,
+    "hibp_check": hibp_check_node,
+}
+
+# LangGraph 的条件边直接路由
+graph.add_conditional_edges("planner", route_next_action, TOOL_NODES)
+
+
+## 它们之间的关系
+
+
+                    ┌─────────────────────────────┐
+                    │  LM 决策层                   │
+                    │  "我要调 zxcvbn_check"        │
+                    │                               │
+                    │  实现方式：                     │
+                    │  · Function Calling（原生）     │
+                    │  · ReAct Prompt（文本模拟）     │
+                    │  · 自定义 JSON 输出             │
+                    └──────────┬──────────────────┘
+                               │
+                    ┌──────────▼──────────────────┐
+                    │  执行层                       │
+                    │  "怎么真正调到这个工具"         │
+                    │                               │
+                    │  实现方式：                     │
+                    │  · 直接 Python 函数调用         │
+                    │  · MCP 协议远程调用             │
+                    │  · HTTP API 调用               │
+                    │  · gRPC 调用                   │
+                    └─────────────────────────────┘
+
+
+Function Calling 和 MCP 不在同一层，不冲突。你完全可以：LLM 通过 Function Calling 决定调什么工具 → 通过 MCP 协议去执行这个工具。也可以：LLM 通过 Function Calling 决定调什么工具 → 直接调本地 Python 函数。
+
+## 你的项目该用哪种
+
+决策层用 Function Calling。因为 Qwen2.5 原生支持，输出格式稳定，比 ReAct prompt 解析可靠得多。在 vLLM 里直接开启就行：
+
+
+# vLLM 启动时
+# vllm serve qwen2.5-7b-instruct --enable-auto-tool-choice --tool-call-parser hermes
+
+# 调用时
+response = client.chat.completions.create(
+    model="qwen2.5-7b-instruct",
+    messages=messages,
+    tools=tools,       # 工具定义
+    tool_choice="auto"
+)
+
+
+执行层用直接函数调用。你的工具都在同一个后端容器里，没必要加 MCP 这层网络开销。
+
+这样你的 planner 节点可以改成用原生 Function Calling 而不是让 LLM 输出自定义 JSON：
+
+
+# agent/planner.py
+def planner_node(state: PassAgentState) -> dict:
+    response = client.chat.completions.create(
+        model="qwen2.5-7b-instruct",
+        messages=build_messages(state),
+        tools=TOOL_DEFINITIONS,    # 标准 function calling 格式
+        tool_choice="auto"
+    )
+    
+    msg = response.choices[0].message
+    
+    if msg.tool_calls:
+        # 模型决定调工具
+        call = msg.tool_calls[0]
+        return {
+            "next_action": call.function.name,
+            "action_params": json.loads(call.function.arguments),
+        }
+    else:
+        # 模型决定直接回复
+        return {
+            "next_action": "respond",
+            "action_params": {},
+        }
+
+
+比之前让 LLM 输出自定义 JSON 再解析更稳定，因为 Function Calling 的输出格式是模型训练时就固化的，不容易出格式错误。
+```
+
+**user**: 
+
+```
+那根据你的知识，功能反正就这5个，还有其他的tools吗，应该是那种简单方便调用的，不需要显卡的。现在既然LLM决定调用不用我去写逻辑了，那感觉可以再加些tools
+```
+
+**assistant**: 
+
+```
+
+
+好思路，tools 越丰富，Agent 的决策空间越大，也越能体现"Agent"而不是流水线。梳理一下每个 skill 下可以加的轻量 tools：
+
+## 强度评估
+
+
+# 1. zxcvbn — 已有
+# 熵值、评分、破解时间估算
+
+# 2. 字符组成分析（纯 Python，几行代码）
+def charset_analyze(password: str) -> dict:
+    """分析密码的字符组成"""
+    return {
+        "length": len(password),
+        "has_upper": any(c.isupper() for c in password),
+        "has_lower": any(c.islower() for c in password),
+        "has_digit": any(c.isdigit() for c in password),
+        "has_special": any(not c.isalnum() for c in password),
+        "unique_chars": len(set(password)),
+        "unique_ratio": len(set(password)) / len(password),  # 重复率
+        "charset_size": calculate_charset_size(password),     # 字符空间大小
+    }
+
+# 3. 键盘模式检测（纯逻辑）
+def keyboard_pattern_check(password: str) -> dict:
+    """检测是否包含键盘连续模式，如 qwerty、asdf、1234"""
+    PATTERNS = [
+        "qwertyuiop", "asdfghjkl", "zxcvbnm",
+        "1234567890", "0987654321",
+        "qazwsx", "!@#$%^&*()",
+    ]
+    found = []
+    pw_lower = password.lower()
+    for p in PATTERNS:
+        for i in range(len(p) - 3):
+            sub = p[i:i+4]
+            if sub in pw_lower:
+                found.append(sub)
+    return {"has_keyboard_pattern": len(found) > 0, "patterns": found}
+
+# 4. 常见弱口令库匹配（加载一个文本文件到内存）
+def weak_list_match(password: str) -> dict:
+    """匹配 rockyou / top10000 等弱口令库"""
+    # 启动时加载到 set 里，查询 O(1)
+    return {
+        "in_top100": password in TOP_100,
+        "in_top1000": password in TOP_1000,
+        "in_top10000": password in TOP_10000,
+        "in_rockyou": password in ROCKYOU_SET,
+    }
+
+# 5. 重复/序列检测
+def repetition_check(password: str) -> dict:
+    """检测重复字符和递增/递减序列"""
+    # aaa, 111, abc, 321 这种
+    max_repeat = 1
+    current_repeat = 1
+    for i in range(1, len(password)):
+        if password[i] == password[i-1]:
+            current_repeat += 1
+            max_repeat = max(max_repeat, current_repeat)
+        else:
+            current_repeat = 1
+    
+    # 递增递减序列
+    sequences = []
+    for i in range(len(password) - 2):
+        if ord(password[i+1]) - ord(password[i]) == 1 and ord(password[i+2]) - ord(password[i+1]) == 1:
+            sequences.append(password[i:
+```
+
+**user**: 
+
+```
+不止强度评估啊，而且你不需要给我输出代码，告诉我干什么的就行
+```
+
+**assistant**: 
+
+```
+对，我直接列全：
+
+## 强度评估
+
+| Tool | 说明 | 依赖 |
+|------|------|------|
+| zxcvbn_check | 熵值、评分、破解时间估算 | zxcvbn-python |
+| charset_analyze | 字符组成分析（长度、大小写、特殊符号、唯一字符比） | 纯 Python |
+| keyboard_pattern_check | 键盘连续模式检测（qwerty、asdf、1234） | 纯 Python |
+| weak_list_match | 匹配 rockyou/top10000 等弱口令库 | 内存加载文本文件 |
+| repetition_check | 重复字符和递增递减序列检测（aaa、abc、321） | 纯 Python |
+| leet_reverse | 还原 leet speak（p@ssw0rd → password），还原后再查弱口令库 | 纯 Python 映射表 |
+| pcfg_analyze | 结构模式分析（L6D4S2） | 已有 |
+| passgpt_prob | 口令被猜中的概率 | 需要模型，已有 |
+| pinyin_check | 检测是否包含常见拼音组合（woaini、nihao） | pypinyin 或自建词表 |
+| date_pattern_check | 检测日期模式（19950101、2023-01） | 正则 |
+| personal_info_check | 结合用户记忆，检测密码是否包含个人信息（名字、生日、宠物名） | 读记忆 + 字符串匹配 |
+
+## 口令生成
+
+| Tool | 说明 | 依赖 |
+|------|------|------|
+| multimodal_parse | 图片/音频转文本关键词 | 需要模型，已有 |
+| generate_password | 基于种子词变换生成口令 | 纯 Python |
+| fetch_site_policy | 爬取目标网站的密码策略（最小长度、必须包含的字符类型） | httpx + 简单爬虫，或维护一个常见网站规则的 JSON |
+| passphrase_generate | 生成助记短语型口令（correct-horse-battery-staple 风格） | 词表 + 随机组合 |
+| pronounceable_generate | 生成可发音的随机口令（比纯随机更好记） | 音节表拼接 |
+| strength_verify | 对生成的口令反过来跑一遍强度评估，确保达标 | 调用强度评估的 tools |
+| retrieve_memory | 检索用户偏好和事实作为种子 | 数据库查询 |
+
+## 记忆恢复
+
+| Tool | 说明 | 依赖 |
+|------|------|------|
+| fragment_combine | 片段排列组合 + 常见分隔符 | itertools |
+| common_variant_expand | 对片段做常见变体扩展（首字母大写、全大写、leet替换） | 纯 Python |
+| rule_generate | 用微调模型生成 hashcat 规则 | 需要模型，已有 |
+| date_expand | 如果片段包含年份，扩展常见日期格式（2023、23、0101） | 纯 Python |
+| retrieve_memory | 从记忆中补充可能的片段（用户可能忘了提但记忆里有） | 数据库查询 |
+
+## 泄露检查
+
+| Tool | 说明 | 依赖 |
+|------|------|------|
+| hibp_password_check | 用 k-Anonymity 查密码泄露次数 | httpx，HIBP API 免费 |
+| hibp_email_check | 查邮箱关联的泄露事件 | httpx，HIBP API 需要 key |
+| breach_detail | 查某个泄露事件的详情（时间、规模、泄露了哪些字段） | httpx，HIBP API |
+| similar_leak_check | 对密码做常见变体后批量查泄露（password → Password1、p@ssword 等） | 组合上面几个 tool |
+
+## 图形口令
+
+| Tool | 说明 | 依赖 |
+|------|------|------|
+| graphical_mode | 唤起前端图形口令组件 | 返回配置 JSON 给前端 |
+| graphical_strength_estimate | 估算图形口令的强度（选点数量、点间距离、是否在热点区域） | 纯 Python 几何计算 |
+| hotspot_check | 检测选点是否落在常见热点区域（图片中心、人脸、角落） | 统计规则，不需要模型 |
+
+## 跨 Skill 通用
+
+| Tool | 说明 | 依赖 |
+|------|------|------|
+| retrieve_memory | 检索用户记忆 | 数据库 |
+| write_memory | 写入新记忆 | 数据库 |
+| personal_info_check | 检测是否包含个人信息 | 记忆 + 字符串匹配 |
+
+总共大概 25-30 个 tools，绝大多数是纯 Python 或一个 HTTP 请求，不吃显存。这个数量对 Qwen2.5-7B 的 function calling 来说完全没压力，它在 Berkeley 榜单上测的就是几十个 tools 的场景。
+
+而且 tools 多了之后，Agent 的行为会更有意思——同样是"帮我看看这个密码安全吗"，Agent 可能对简单密码只调 3 个 tool，对复杂密码调 7-8 个，这种动态性在答辩演示的时候很出彩。
+```
+
+**user**: 
+
+```
+那这里除了我的问卷调查，还有其他的评估这个agent性能的方式吗？客观指标。我后续还要写论文用
+```
+
+**assistant**: 
+
+```
+这个问题很关键，毕设论文里光有问卷是不够的，需要客观可量化的实验。
+
+## 1. Agent 决策能力评估
+
+自己构造一个测试集，100-200 条用户 query，标注好 ground truth，测 Agent 的决策准确率。
+
+| 指标 | 怎么测 |
+|------|--------|
+| 意图识别准确率 | 标注每条 query 的正确意图，对比 planner 第一步的决策 |
+| 工具选择准确率 | 标注每条 query 应该调哪些工具，对比 Agent 实际调用的工具集合 |
+| 工具调用顺序合理性 | 人工标注合理的调用顺序，计算序列匹配度 |
+| 冗余调用率 | Agent 调了但其实不需要调的工具占比，越低越好 |
+| 遗漏调用率 | 应该调但 Agent 没调的工具占比，越低越好 |
+| 平均调用步数 | 完成一个任务平均调几个工具，跟人工标注的最优步数对比 |
+| 多意图识别率 | 对于包含多个意图的 query（"查强度并检查泄露"），能否全部识别 |
+
+测试集长这样：
+
+
+[
+    {
+        "query": "帮我看看 abc123 安全吗",
+        "intent": ["STRENGTH_CHECK"],
+        "expected_tools": ["zxcvbn_check", "weak_list_match", "keyboard_pattern_check"],
+        "expected_tools_must": ["zxcvbn_check"],
+        "expected_tools_optional": ["pcfg_analyze", "charset_analyze"]
+    },
+    {
+        "query": "看看 abc123 安不安全，顺便查查有没有泄露，不行就帮我生成个新的",
+        "intent": ["STRENGTH_CHECK", "LEAK_CHECK", "GENERATION"],
+        "expected_tools_must": ["zxcvbn_check", "hibp_password_check", "generate_password"],
+        "conditional": "generate_password only if strength is weak"
+    }
+]
+
+
+## 2. 各功能模块的独立评估
+
+### 强度评估准确性
+
+| 指标 | 方法 |
+|------|------|
+| 与专业工具的一致性 | 拿 1000 个密码，对比你的综合评分 vs Kaspersky/Microsoft 密码强度检测器的评分，计算相关系数 |
+| 弱口令检出率 | 从 rockyou 里抽 500 个已知弱密码 + 500 个强密码，测 precision / recall / F1 |
+| 分级准确率 | 人工标注 弱/中/强，对比 Agent 的分级，计算 Cohen's Kappa |
+
+### 口令生成质量
+
+| 指标 | 方法 |
+|------|------|
+| 生成口令强度分布 | 生成 1000 个口令，用 zxcvbn 评分，统计分布（应该集中在 3-4 分） |
+| 策略合规率 | 给定网站密码策略（如 GitHub：8位以上+数字+大写），生成 100 个，测合规比例 |
+| 助记词保留率 | 用户给了种子词 "cat"、"2023"，生成的密码中能识别出种子词痕迹的比例 |
+| 唯一性 | 同一输入生成 100 次，去重后的比例（不能每次生成一样的） |
+| 抗猜测能力 | 生成的口令丢进 hashcat + rockyou 规则跑，看多少能被破解 |
+
+### 记忆恢复命中率
+
+| 指标 | 方法 |
+|------|------|
+| Top-K 命中率 | 构造测试集：已知完整密码 + 模拟用户只记得部分片段，看候选列表 Top-10/20/50 里有没有正确答案 |
+| 候选列表大小 | 平均生成多少个候选，太多了没用，太少了覆盖不够 |
+
+### 泄露检查
+
+这个比较简单，HIBP 的 API 是确定性的，主要测：
+
+| 指标 | 方法 |
+|------|------|
+| 响应准确率 | 拿已知泄露的密码和未泄露的密码各 100 个，测准确率（应该 100%） |
+| 变体检测能力 | 密码 "password" 泄露了，Agent 能不能主动检查 "Password1"、"p@ssword" 等变体 |
+
+## 3. 端到端任务完成率
+
+设计 50-100 个完整的用户场景，每个场景有明确的成功标准：
+
+
+{
+    "scenario": "用户提供弱密码，要求评估并生成替代方案",
+    "input": "我的密码是 qwerty123，帮我看看行不行，不行就换一个",
+    "success_criteria": [
+        "正确识别为弱密码",
+        "给出了具体的弱点分析（至少2条）",
+        "检查了泄露情况",
+        "生成了至少1个替代口令",
+        "替代口令 zxcvbn 评分 >= 3",
+        "回复中没有暴露原始密码的明文（脱敏处理）"
+    ]
+}
+
+
+任务完成率 = 满足所有 success_criteria 的场景数 / 总场景数
+
+## 4. 记忆模块评估
+
+| 指标 | 方法 |
+|------|------|
+| 记忆提取准确率 | 对话中提到"我女儿叫 Alice"，检查是否正确写入 FACT 类型 |
+| 记忆利用率 | 已有记忆"用户偏好16位密码"，生成时是否真的生成了16位 |
+| 隐私合规率 | 对话中出现了明文密码，检查是否没有写入记忆（不该记的不能记） |
+| 记忆召回率 | 存了10条记忆，相关的场景下能召回几条 |
+
+## 5. 性能指标
+
+| 指标 | 方法 |
+|------|------|
+| 端到端响应时间 | 从用户发送到最终回复完成的总时间 |
+| 首 token 延迟 | 用户发送到开始流式输出第一个字的时间 |
+| 各工具执行耗时 | 从 tool_invocations 表统计 |
+| planner 决策耗时 | 每次 planner 节点的 LLM 推理时间 |
+| 平均循环次数 | 完成一个任务 planner 被调用几次 |
+
+这些都可以从你之前加的 `tool_invocations` 表里直接统计。
+
+## 6. 对比实验
+
+这是论文里最出彩的部分：
+
+| 对比维度 | 实验设计 |
+|----------|----------|
+| Agent vs 流水线 | 同样的 tools，一个用 LLM 动态路由，一个用固定 if-else 流水线，对比任务完成率和冗余调用率 |
+| 有记忆 vs 无记忆 | 对比生成口令时，有用户记忆和没有用户记忆的个性化程度和用户满意度 |
+| 不同 LLM 做 planner | Qwen2.5-7B vs Qwen2.5-3B vs GLM-4-9B，对比工具选择准确率 |
+| 4bit vs FP16 | 同一模型量化前后，function calling 准确率对比 |
+| 工具数量的影响 | 注册 10 个 tools vs 20 个 vs 30 个，planner 的决策准确率是否下降 |
+
+## 论文实验章节结构建议
+
+
+5. 实验与评估
+  5.1 实验设置（模型、硬件、测试集构造方法）
+  5.2 Agent 决策能力评估（意图识别、工具选择准确率）
+  5.3 各功能模块评估（强度评估准确性、生成质量、恢复命中率）
+  5.4 端到端任务完成率
+  5.5 记忆模块评估
+  5.6 对比实验（Agent vs 流水线、有无记忆、不同模型、量化影响）
+  5.7 性能分析（延迟、吞吐）
+  5.8 用
+```
+
+**user**: 
+
+```
+我还见过那种一个回复结束后还会引导用户提问的那种，这种也是在respond里做的吗
+此外，像这种的毕设论文该咋写啊？这种感觉不像普通的那种论文，这个也没啥可量化可对比的benchmark啥的
+```
+
+**assistant**: 
+
+```
+## 引导提问
+
+对，在 respond 节点的 prompt 里加一句就行：
+
+
+回复末尾，根据当前分析结果，给出 2-3 个用户可能想继续问的问题作为引导。
+用简短的按钮式文本，例如：
+- "🔍 查看这个密码是否泄露"
+- "🔑 帮我生成一个更安全的替代密码"  
+- "📊 详细分析密码结构"
+
+
+前端拿到后渲染成可点击的 suggestion chips，用户点了就等于发了一条新消息，重新走 Agent 流程。这个交互在 ChatGPT、Gemini 里都有，用户体验很好，答辩演示时也能展示 Agent 的多轮能力。
+
+不过要注意引导的内容要跟上下文相关，不能每次都是固定的三个按钮。比如强度评估完发现很弱，引导"要不要生成新密码"；泄露检查完没问题，引导"要不要也测一下强度"。这个 LLM 自己会根据 tool_history 判断，不需要你写逻辑。
+
+## 论文怎么写
+
+你说得对，这种工程型毕设确实不像传统论文有明确的 benchmark 可以刷分。但这不代表没东西写，只是写法不同。
+
+### 整体结构
+
+
+第1章 绪论
+  1.1 研究背景与意义
+      - 口令安全现状（弱口令占比、泄露事件统计、用户密码习惯调研数据）
+      - 现有口令管理工具的不足（1Password/Bitwarden 只管存储，不做智能分析）
+      - LLM Agent 在垂直领域的应用趋势
+  1.2 国内外研究现状
+      - 口令安全方向：zxcvbn、PCFG、PassGPT、pass2edit 这些工作的综述
+      - LLM Agent 方向：ReAct、Toolformer、HuggingGPT 这些框架的综述
+      - 结合点：目前没有把 LLM Agent 应用到口令安全领域的工作（这是你的创新点）
+  1.3 研究内容与主要贡献
+  1.4 论文组织结构
+
+第2章 相关技术
+  2.1 口令安全评估方法（zxcvbn、PCFG、熵值计算）
+  2.2 口令猜测与规则生成（hashcat、PassGPT、你的微调模型）
+  2.3 大语言模型与 Function Calling
+  2.4 LLM Agent 架构（ReAct、LangGraph、工具调用机制）
+  2.5 流式传输与前端交互（SSE）
+
+第3章 系统设计（这是你的重头戏）
+  3.1 需求分析
+      - 功能需求（5个skill）
+      - 非功能需求（隐私保护、响应延迟、本地部署）
+  3.2 系统总体架构
+      - 三容器架构设计与理由
+      - 前后端分离 + 模型推理服务独立
+  3.3 Agent 架构设计
+      - Planner-Tool-Response 循环机制
+      - 状态图设计（画 LangGraph 的状态转移图）
+      - 工具注册与动态路由机制
+      - 与传统流水线架构的对比分析（为什么选 Agent 而不是 pipeline）
+  3.4 记忆模块设计
+      - 记忆分类（PREFERENCE/FACT/CONSTRAINT）
+      - 读写策略
+  3.5 工具体系设计
+      - 按 skill 分组的工具清单
+      - 每个工具的输入输出规范
+  3.6 数据库设计
+      - ER图
+      - 各表的设计理由
+  3.7 隐私与安全设计
+      - 本地部署策略
+      - 密码脱敏机制
+      - 记忆模块的隐私过滤
+
+第4章 系统实现
+  4.1 开发环境与技术栈
+  4.2 模型推理服务实现
+      - vLLM 部署
+      - 量化策略
+      - 多模型管理（常驻 vs 按需加载）
+  4.3 Agent 核心实现
+      - Planner 的 prompt 设计（这个可以详细展开，展示几版迭代）
+      - Function Calling 的接入
+      - 工具节点实现（挑几个有代表性的详细讲）
+  4.4 前端实现
+      - Agent 执行过程可视化
+      - SSE 流式渲染
+  4.5 关键问题与解决方案
+      - 显存优化
+      - 量化对 function calling 的影响及应对
+      - planner 决策失误的容错机制
+
+第5章 实验与评估
+  5.1 实验设置
+  5.2 Agent 决策能力评估
+  5.3 功能模块评估
+  5.4 对比实验
+  5.5 性能评估
+  5.6 用户调研（问卷）
+  5.7 案例分析（Case Study）
+
+第6章 总结与展望
+
+
+### 第5章怎么写才不虚
+
+你说没有 benchmark，但其实你可以自己构造评估体系，这本身就是贡献。
+
+核心思路：既然没有现成的口令安全 Agent benchmark，你就自己定义一个评估框架，然后在这个框架下做实验。论文里写"本文提出了一套面向口令安全 Agent 的评估方法"，这就是一个贡献点。
+
+具体来说，第5章最有说服力的写法是 Case Study + 定量指标结合：
+
+Case Study 部分，挑 5-6 个典型场景，完整展示 Agent 的执行过程：
+
+
+案例1：简单强度评估
+  用户输入 → planner 决策过程 → 调用了哪些工具 → 最终回复
+  分析：Agent 正确识别意图，合理选择了3个工具，未冗余调用
+
+案例2：多意图复合请求
+  用户输入"查强度+查泄露+生成新密码"
+  → 展示 Agent 如何分步完成，中间如何根据结果动态调整
+  分析：对比流水线方案，流水线会固定调用所有工具，
+        Agent 在发现密码很强时跳过了生成步骤，节省了2次工具调用
+
+案例3：记忆模块发挥作用
+  第一轮对话用户提到"我喜欢16位密码"
+  第二轮对话用户要求生成密码，Agent 自动检索记忆并生成16位
+  分析：展示记忆的写入和读取过程
+
+案例4：Agent 犯错并恢复
+  planner 第一次选错了工具，但在拿到结果后自我纠正
+  分析：展示容错机制的价值
+
+
+定量指标部分，上一轮我给你列的那些指标不需要全做，挑几个核心的：
+
+
+必做：
+- 意图识别准确率（100-200条测试集）
+- 工具选择 F1（precision + recall）
+- 端到端任务完成率（50-100个场景）
+- Agent vs 流水线对比（任务完成率 + 冗余调用率）
+- 响应延迟分析
+
+选做（加分项）：
+- 不同模型做 planner 的对比
+- 量化影响
+- 记忆模块有无的对比
+- 生成口令的强度分布
+
+
+### 创新点怎么提炼
+
+毕设论文不需要像顶会那样有很强的 novelty，但要能说清楚"你做了什么别人没做的"：
+
+1. 首次将 LLM Agent 架构应用于口令安全领域（选题创新）
+2. 设计了基于 LangGraph 的动态工具编排机制，相比传统流水线能处理多意图复合请求（架构创新）
+3. 提出了口令安全场景下的记忆模块设计，在保护隐私的前提下实现个性化服务（模块创新）
+4. 构建了面向口令安全 Agent 的评估框架（评估创新）
+5. 集成了多模态输入的口令生成方案（功能创新，虽然是老师要求的，但论文里不用说）
+
+这些够撑一篇毕设论文了。关键是第3章系统设计要写厚，这是你工作量最大的地方，也是评审最看重的。
+```
+
+**user**: 
+
+```
+第2章 相关技术：里面需要把
+  2.4 LLM Agent 架构（ReAct、LangGraph、工具调用机制）
+  2.5 流式传输与前端交互（SSE）
+这种偏技术的写上去吗？
+同理，
+  3.6 数据库设计
+      - ER图
+      - 各表的设计理由
+  3.5 工具体系设计
+      - 按 skill 分组的工具清单
+      - 每个工具的输入输出规范
+
+  4.4 前端实现
+      - Agent 执行过程可视化
+      - SSE 流式渲染
+  4.5 关键问题与解决方案
+      - 显存优化
+      - 量化对 function calling 的影响及应对
+      - planner 决策失误的容错机制
+
+这种感觉像是课程报告里的内容，而不是论文里的？
+
+然后评估这块，你说的是我人工去标测试集，但是很多情况下，我人工去标的也不是ground truth啊，而且那也只能代表我个人的truth？
+
+```
+
+**assistant**: 
+
+```
+你说的都对，我重新调整一下。
+
+## 第2章 相关技术
+
+SSE、数据库这些确实不该出现在论文里，太工程了。第2章应该只写跟你研究问题直接相关的学术背景：
+
+
+第2章 相关工作
+  2.1 口令安全评估方法
+      - 基于规则的方法（NIST 策略、字符组成检查）
+      - 基于统计的方法（zxcvbn 的熵值模型、PCFG）
+      - 基于深度学习的方法（PassGPT、FLA）
+      - 各方法的优缺点对比
+  2.2 口令猜测与转换
+      - hashcat 规则引擎
+      - pass2edit / PassGPT 的规则生成
+      - 你的微调工作在这个脉络里的位置
+  2.3 LLM Agent
+      - Agent 的定义与核心能力（规划、工具使用、记忆）
+      - 代表性工作：ReAct、Toolformer、HuggingGPT
+      - 垂域 Agent 的应用现状（医疗、金融、代码等）
+      - 口令安全领域的空白 ← 引出你的工作
+  2.4 口令泄露检测
+      - HIBP 的 k-Anonymity 机制
+      - 撞库攻击与防御
+
+
+注意是"相关工作"不是"相关技术"，每一节的落脚点是"前人做了什么、有什么不足、你的工作怎么补上"，不是教读者什么是 SSE。
+
+## 第3、4章
+
+数据库 ER 图、每个工具的输入输出规范、前端实现细节这些确实是课程报告的内容。论文里第3章应该聚焦在设计决策和背后的思考，而不是罗列实现细节：
+
+
+第3章 系统设计
+  3.1 问题定义与需求分析
+      - 形式化定义：口令安全 Agent 的输入输出是什么
+      - 5个功能需求的来源（用户调研 or 文献分析）
+  3.2 Agent 架构设计
+      - 为什么选 Agent 而不是流水线（用例分析，多意图、条件分支等）
+      - Planner-Tool-Response 循环机制
+      - 状态图设计（这个值得画，是你的核心贡献）
+      - 工具动态编排策略
+  3.3 记忆模块设计
+      - 口令场景下的记忆需求分析（什么该记什么不该记）
+      - 隐私约束下的记忆策略
+  3.4 隐私与安全设计
+      - 本地部署的必要性分析
+      - 密码脱敏策略
+      - 威胁模型（如果要写得学术一点的话）
+
+第4章 关键技术实现
+  4.1 Planner 的 Prompt 工程
+      - prompt 的设计迭代过程（v1 → v2 → v3，每版解决了什么问题）
+      - Function Calling vs ReAct 的选型对比实验
+  4.2 口令强度综合评估方法
+      - 多工具融合评分策略（怎么把 zxcvbn + PCFG + PassGPT 的结果综合成一个评分）
+  4.3 基于微调模型的规则生成
+      - 训练数据构造
+      - 微调策略
+      - 这部分你已经有实验数据了，可以展开写
+  4.4 模型部署与资源优化
+      - 多模型共存的显存分配策略
+      - 量化对各任务的影响分析
+
+
+前端、数据库、SSE 这些放附录，或者在 4.x 里用一两句话带过就行。
+
+## 评估的 Ground Truth 问题
+
+你说得很对，你一个人标的确实不是客观的 ground truth。这个问题在 NLP 领域有标准的解决方案：
+
+### 方案一：多人标注 + 一致性度量
+
+找 3-5 个人（同学就行）独立标注同一批数据，然后计算标注者间一致性：
+
+- Fleiss' Kappa 或 Cohen's Kappa
+- 一致性 > 0.8 说明标注可靠
+- 有分歧的样本，投票取多数 或 讨论后达成一致
+
+论文里写"本文邀请了 N 名具有信息安全背景的标注者，标注者间一致性 Kappa = 0.85"，这就有说服力了。
+
+### 方案二：规则可验证的指标，不需要人标
+
+很多指标其实不需要主观标注：
+
+
+不需要人标的指标（客观可验证）：
+- 生成口令的 zxcvbn 评分分布          → 直接跑 zxcvbn
+- 生成口令是否符合网站策略             → 规则校验
+- 泄露检查的准确率                     → HIBP 是确定性 API
+- 生成口令被 hashcat 破解的比例        → 直接跑 hashcat
+- 记忆恢复的 Top-K 命中率             → 已知答案，直接算
+- 响应延迟                            → 计时
+- 隐私合规（密码是否被写入记忆）       → 查数据库
+
+
+
+需要人标但争议小的指标：
+- 意图识别（"帮我看看abc123安全吗" → STRENGTH_CHECK，这个基本没争议）
+- 工具选择的必要性（zxcvbn 对强度评估是否必要，这个也没争议）
+
+
+
+主观性强的指标（交给问卷）：
+- 回复质量
+- 建议的实用性
+- 交互体验
+
+
+### 方案三：LLM-as-Judge
+
+用一个更强的模型（比如 GPT-4 / Claude）来评估你的 Agent 的输出质量。这个方法现在学术界已经比较认可了，很多论文在用：
+
+
+给 GPT-4 的评估 prompt：
+"请评估以下口令安全助手的回复质量，从以下维度打分（1-5）：
+1. 准确性：分析结论是否正确
+2. 完整性：是否覆盖了用户的所有需求
+3. 实用性：建议是否可操作
+4. 安全性：是否泄露了敏感信息
+
+用户输入：...
+助手回复：...
+工具调用记录：..."
+
+
+论文里引用几篇用 LLM-as-Judge 的工作（比如 MT-Bench、AlpacaEval），说明这个评估方法的合理性就行。
+
+### 建议的评估组合
+
+
+第5章 实验与评估
+  5.1 实验设置
+      - 测试集构造（规模、来源、标注方法）
+      - 标注者信息和一致性
+  5.2 Agent 决策评估
+      - 意图识别准确率（多人标注，Kappa 值）
+      - 工具选择 F1
+  5.3 功能评估
+      - 强度评估：与 zxcvbn/Kaspersky 的一致性（客观）
+      - 口令生成：zxcvbn 评分分布 + hashcat 抗破解率（客观）
+      - 记忆恢复：Top-K 命中率（客观）
+  5.4 对比实验
+      - Agent vs 流水线（任务完成率，多人标注）
+      - 有无记忆模块的对比
+  5.5 LLM-as-Judge 评估
+      - 回复质量多维度评分
+  5.6 用户调研
+      - 问卷设计（SUS 量表 or 自定义）
+      - 结果分析
+  5.7 案例分析
+
+
+这样客观指标为主、主观评估为辅、多人标注保证可靠性，论文的实验部分就立得住了。
+```
+
+**user**: 
+
+```
+ok那反正我5月8号要交论文初稿。现在今天是2月11号，我同时还在准备投稿一篇ESORICS的会议，这个会议截稿在2026-04-22 19:59:59。然后还有一个开源项目这块，这个的ddl大致在3月1号之前吧，要把v1版本发版。这三个我都得干好，怎么规划我的时间。不瞒你说我现在还在实习，实习到4月30号，所以工作日的白天只能摸鱼的时候干，有空基本上是晚上和周末
+```
+
+**assistant**: 
+
+```
+说实话，时间很紧，但能做。关键是三件事之间有重叠，不是完全独立的工作量。
+
+## 先理清依赖关系
+
+
+开源项目 v1（3月1号）
+    ↓ 部分代码和设计可以复用到毕设
+毕设系统实现（持续进行）
+    ↓ 系统做完才能跑实验
+ESORICS 论文（4月22号）← 这个跟毕设的关系是？
+    ↓
+毕设论文初稿（5月8号）
+
+
+ESORICS 投的是 pass2edit / passllm 那个方向的工作对吧？如果是的话，它跟毕设的 Agent 系统是两条线，但 pass2edit 的模型恰好是 Agent 里的一个 tool，所以 ESORICS 的实验结果可以直接搬进毕设论文的 4.3 节。
+
+## 时间分配
+
+### 2月11日 - 3月1日（3周）：开源项目冲刺 + 毕设基础搭建
+
+开源项目是最紧急的，优先级最高。但每天留 1-2 小时给毕设打地基。
+
+
+开源项目（70%精力）：
+- 发版 v1
+
+毕设（30%精力）：
+- 周末时间搭 LangGraph 骨架（graph.py、state.py、planner.py）
+- 把 2-3 个核心 tool 跑通（zxcvbn、hibp、generate）
+- 数据库表建好，docker-compose 能跑起来
+- 目标：Agent 能完成一个最简单的端到端流程
+
+
+### 3月1日 - 3月31日（4周）：毕设系统主力开发 + ESORICS 实验
+
+开源项目交付后释放大量时间。这个月是产出最多的阶段。
+
+
+第1-2周（毕设系统 70%，ESORICS 30%）：
+- 补全所有 tool 节点
+- 记忆模块实现
+- 前端对接（用 LangGraph 的开源 UI 框架你说已经有了）
+- Agent 执行过程可视化
+- 晚上和摸鱼时间跑 ESORICS 的实验
+
+第3-4周（ESORICS 60%，毕设 40%）：
+- ESORICS 论文主体撰写
+- 毕设这边做用户注册登录、多用户支持等收尾工作
+- 开始构造毕设的评估测试集
+
+
+### 4月1日 - 4月22日（3周）：ESORICS 冲刺 + 毕设实验
+
+
+第1-2周（ESORICS 80%）：
+- ESORICS 论文打磨、实验补充、投稿
+- 毕设这边利用碎片时间跑评估实验（很多是自动化的，挂着跑就行）
+- 找 3-5 个同学帮忙标注测试集
+
+第3周（4月15-22，ESORICS 100%）：
+- 全力冲 ESORICS 投稿
+- 4月22号投完
+
+
+### 4月23日 - 5月8日（2周）：毕设论文冲刺
+
+
+第1周：
+- 写第3章系统设计（最重的一章，但系统已经做完了，是回顾性写作）
+- 写第4章关键技术实现
+- ESORICS 的实验结果搬进毕设论文
+
+第2周：
+- 写第5章实验与评估（实验数据已经有了）
+- 写第1、2、6章（绪论、相关工作、总结）
+- 通读打磨
+- 5月8号交初稿
+
+
+## 几个保命建议
+
+1. 毕设系统不要追求完美，能演示就行。答辩看的是你能不能讲清楚设计思路，不是系统有多精致。前端丑一点没关系，Agent 决策流程跑通最重要。
+
+2. ESORICS 和毕设的实验尽量复用。pass2edit 的规则生成实验、不同模型对比、不同训练集大小的实验，这些在两篇文章里都能用，只是叙述角度不同。
+
+3. 问卷调查放到 4 月中下旬做。系统稳定了再让人试用，提前做只会收到一堆 bug 反馈。问卷用问卷星，发到几个微信群里，收 30-50 份就够毕设用了。
+
+4. 论文不要最后才写。3 月份系统开发的时候，每做完一个模块就把设计思路记下来，哪怕是碎片化的笔记。到 4 月底写论文的时候你会感谢自己。
+
+5. 实习摸鱼时间优先做不需要 GPU 的事：写论文、标注测试集、写纯 Python 的 tool 函数、设计 prompt。晚上和周末做需要跑模型的实验。
+```
+
+
+
+--------------------
+
+
+<a href="https://chatboxai.app" style="display: flex; align-items: center;">
+<img src='https://chatboxai.app/icon.png' style='width: 40px; height: 40px; padding-right: 6px'>
+<b style='font-size:30px'>Chatbox AI</b>
+</a>
