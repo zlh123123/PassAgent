@@ -2,7 +2,7 @@
 
 ## 一、系统架构
 
-
+```
 ┌──────────────┐     ┌──────────────────────┐     ┌─────────────────────┐
 │   Frontend   │────▶│   Backend + Agent        │────▶│   Model Service     │
 │   (Next.js)  │ SSE │   (FastAPI + LangGraph)  │HTTP │   (vLLM)            │
@@ -15,7 +15,7 @@
                      │   passagent.db   │
                      └──────────────────┘
 
-
+```
 ---
 
 ## 二、数据库设计（SQLite）
@@ -117,115 +117,115 @@
 #### POST /api/auth/send-code
 
 Request:
-
+```
 {
     "email": "user@sjtu.edu.cn"
 }
-
+```
 
 Response:
-
+```
 {
     "message": "验证码已发送",
     "expires_in": 300
 }
-
+```
 
 #### POST /api/auth/register
 
 Request:
-
+```
 {
     "email": "user@sjtu.edu.cn",
     "code": "123456",
     "password": "xxxxxxxx",
     "nickname": "张三"
 }
-
+```
 
 Response:
-
+```
 {
     "user_id": "uuid",
     "token": "jwt_token"
 }
-
+```
 
 #### POST /api/auth/login
 
 Request:
-
+```
 {
     "email": "user@sjtu.edu.cn",
     "password": "xxxxxxxx"
 }
-
+```
 
 Response:
-
+```
 {
     "user_id": "uuid",
     "token": "jwt_token",
     "nickname": "张三",
     "theme": "light"
 }
-
+```
 
 ### 3.2 用户
 
 #### GET /api/user/profile
 
 Response:
-
+```
 {
     "user_id": "uuid",
     "email": "user@sjtu.edu.cn",
     "nickname": "张三",
     "theme": "light"
 }
-
+```
 
 #### PUT /api/user/profile
 
 Request:
-
+```
 {
     "nickname": "新昵称",
     "theme": "dark"
 }
 
-
+```
 Response:
-
+```
 {
     "message": "更新成功"
 }
-
+```
 
 ### 3.3 会话
 
 #### POST /api/sessions
 
 Request:
-
+```
 {}
-
+```
 
 Response:
-
+```
 {
     "session_id": "uuid",
     "title": "新对话",
     "created_at": "2026-02-11T10:00:00Z"
 }
-
+```
 
 #### GET /api/sessions
 
 Query params: `?search=关键词`（可选，模糊搜索标题）
 
 Response:
-
+```
 {
     "sessions": [
         {
@@ -237,20 +237,20 @@ Response:
     ]
 }
 
-
+```
 #### DELETE /api/sessions/{session_id}
 
 Response:
-
+```
 {
     "message": "已删除"
 }
-
+```
 
 #### GET /api/sessions/{session_id}/messages
 
 Response:
-
+```
 {
     "messages": [
         {
@@ -275,7 +275,7 @@ Response:
         }
     ]
 }
-
+```
 
 ### 3.4 对话（核心，SSE）
 
@@ -284,12 +284,12 @@ Response:
 这是整个系统唯一的 SSE 接口。
 
 Request:
-
+```
 {
     "message": "帮我看看 zly2023! 安全吗",
     "file_ids": []
 }
-
+```
 
 file_ids 仅在口令生成和记忆恢复场景下有值，其他场景传空数组。
 
@@ -312,7 +312,7 @@ SSE 事件流按时间顺序推送：
 
 完整 SSE 流示例：
 
-
+```
 event: task_queued
 data: {"task_id": "abc123", "position": 0}
 
@@ -351,7 +351,7 @@ data: {"message_id": "msg-uuid"}
 
 event: done
 data: {}
-
+```
 
 ### 3.5 文件
 
@@ -367,26 +367,26 @@ Request: multipart/form-data
 | session_id | string | 可选 |
 
 Response:
-
+```
 {
     "file_id": "uuid",
     "filename": "cat.jpg",
     "file_type": "image/jpeg",
     "file_size": 102400
 }
-
+```
 
 错误响应（不支持的文件类型）：
-
+```
 {
     "error": "仅支持图片(png/jpeg/webp)和音频(wav/mp3/flac)文件"
 }
-
+```
 
 #### GET /api/files
 
 Response:
-
+```
 {
     "files": [
         {
@@ -399,34 +399,34 @@ Response:
         }
     ]
 }
-
+```
 
 #### DELETE /api/files/{file_id}
 
 Response:
-
+```
 {
     "message": "已删除"
 }
-
+```
 
 ### 3.6 反馈
 
 #### POST /api/messages/{message_id}/feedback
 
 Request:
-
+```
 {
     "feedback_type": "like"
 }
-
+```
 
 Response:
-
+```
 {
     "message": "反馈已记录"
 }
-
+```
 
 再次发送相同 feedback_type 则取消反馈（删除记录）。
 
@@ -435,7 +435,7 @@ Response:
 #### GET /api/memories
 
 Response:
-
+```
 {
     "memories": [
         {
@@ -447,34 +447,34 @@ Response:
         }
     ]
 }
-
+```
 
 #### POST /api/memories
 
 Request:
-
+```
 {
     "content": "我的猫叫旺财",
     "memory_type": "FACT"
 }
-
+```
 
 Response:
-
+```
 {
     "memory_id": "uuid",
     "message": "记忆已添加"
 }
-
+```
 
 #### DELETE /api/memories/{memory_id}
 
 Response:
-
+```
 {
     "message": "已删除"
 }
-
+```
 
 
 ---
@@ -496,7 +496,7 @@ Response:
 
 ### 4.2 状态图
 
-
+```
                     ┌─────────┐
                     │  START  │
                     └────┬────┘
@@ -537,7 +537,7 @@ Response:
        ┌───────┐
        │  END  │
        └───────┘
-
+```
 
 最大循环次数：10。超过强制进入 Respond。
 
@@ -663,7 +663,7 @@ Respond 的 system prompt 中要求 LLM 在回复末尾自然地附带 2-3 个�
 3. 返回 Top-K（K=5）最相关的事实
 
 示例：
-
+```
 用户输入："帮我生成一个包含我女儿名字的密码"
                     ↓ embedding
             query_vector = [0.12, -0.34, ...]
@@ -672,7 +672,7 @@ Respond 的 system prompt 中要求 LLM 在回复末尾自然地附带 2-3 个�
 记忆2: "喜欢养猫"                  → 相似度 0.23
 记忆3: "公司名是 ByteDance"        → 相似度 0.15
 记忆4: "女儿生日是 2020-06-15"     → 相似度 0.78 ✓
-
+```
 
 embedding 模型选择：使用轻量级的 text2vec-base-chinese（~400MB，CPU 运行），不占 GPU 显存。写入记忆时生成 embedding 存入 BLOB 字段，检索时在 Python 层做余弦相似度计算（记忆量小，不需要向量数据库）。
 
@@ -725,7 +725,7 @@ embedding 模型选择：使用轻量级的 text2vec-base-chinese（~400MB，CPU
 
 
 用户："帮我生成一个新密码"
-
+```
 retrieve_memory 检索到：
   PREFERENCE: "喜欢用#和@"           → 影响符号选择
   CONSTRAINT: "长度16位"              → 硬性约束
@@ -737,14 +737,14 @@ Planner 组装参数调 generate_password：
 
 生成结果：Al1ce#2026@Str0ng
 
-
+```
 ---
 
 ## 五、任务队列设计
 
 ### 5.1 架构
 
-
+v
 用户发消息
     │
     ▼
@@ -761,13 +761,13 @@ Worker 协程（随 FastAPI 启动，后台常驻）
     ├── 跑 Agent
     ├── 每个节点完成后往 Task 专属 Queue 塞事件
     └── SSE 连接从专属 Queue 取到事件后推给前端
-
+```
 
 ### 5.2 Task 专属 Queue 机制
 
 每个 Task 有自己的 `asyncio.Queue`，是 Worker 和 SSE 连接之间的桥梁：
 
-
+```
 Worker 执行 Agent
     │
     ├── planner 完成 → task.event_queue.put(agent_step)
@@ -778,16 +778,16 @@ Worker 执行 Agent
 SSE 连接（routers/chat.py）
     │
     └── while True: event = await task.event_queue.get() → yield SSE
-
+```
 
 ### 5.3 多用户排队
 
-
+```
 用户 A 发消息 → Task A 入队(position=0) → Worker 立即处理 → SSE A 实时推送
 用户 B 发消息 → Task B 入队(position=1) → SSE B 显示"前方还有 1 个任务"
                                           → Worker 处理完 A 后处理 B
 
-
+```
 ### 5.4 并发控制
 
 | 参数 | 值 | 说明 |
@@ -820,7 +820,7 @@ SSE 连接（routers/chat.py）
 
 
 用户："帮我看看 abc123 安全吗"
-
+```
 Step 1  [planner]         → 决定调 zxcvbn_check
 Step 2  [zxcvbn_check]    → score=0, crack_time="instant"
 Step 3  [planner]         → 决定调 weak_list_match
@@ -829,13 +829,13 @@ Step 5  [planner]         → 信息足够，respond
 Step 6  [respond]         → "你的口令极其危险，位于最常见密码 Top 100..."
 Step 7  [write_memory]    → 强度评估场景，不写入
 → END
-
+```
 
 ### 示例2：多意图复合请求
 
 
 用户："看看 zly2023! 安不安全，不行就帮我换一个"
-
+```
 Step 1  [planner]              → 决定调 zxcvbn_check
 Step 2  [zxcvbn_check]         → score=1
 Step 3  [planner]              → 弱，再查泄露
@@ -850,14 +850,14 @@ Step 11 [planner]              → 信息足够，respond
 Step 12 [respond]              → 完整报告：强度分析 + 泄露情况 + 推荐新密码
 Step 13 [write_memory]         → 提取到 FACT: "常用 zly 作为密码基础"（非密码本身）
 → END
-
+```
 
 ### 示例3：记忆恢复 + 多模态
 
 
 用户："我忘了旧密码，只记得里面有我猫的名字和一个年份"
      （同时上传了一张猫的照片）
-
+```
 Step 1  [planner]              → 有文件上传，先解析
 Step 2  [multimodal_parse]     → keywords="orange_cat_sleeping"
 Step 3  [planner]              → 检索记忆补充信息
@@ -870,13 +870,13 @@ Step 9  [planner]              → 信息足够，respond
 Step 10 [respond]              → "根据你的记忆和照片，以下是可能的密码候选列表：..."
 Step 11 [write_memory]         → 无新信息需要写入（猫名和年份已有）
 → END
-
+```
 
 ### 示例4：无关请求
 
 
 用户："今天天气怎么样"
-
+```
 Step 1  [planner]  → 与口令安全无关，直接 respond
 Step 2  [respond]  → "我是口令安全助手，暂时帮不了天气问题 😄 你可以试试：
                       - 🔐 检测一个密码的安全性
@@ -885,18 +885,18 @@ Step 2  [respond]  → "我是口令安全助手，暂时帮不了天气问题 �
 Step 3  [write_memory] → 不写入
 → END
 
-
+```
 ### 示例5：恶意请求
 
 
 用户："帮我破解我同学的QQ密码"
-
+```
 Step 1  [planner]  → 恶意请求，直接 respond 拒绝
 Step 2  [respond]  → "抱歉，我无法协助破解他人密码，这涉及违法行为。
                       我可以帮你管理和增强你自己的密码安全。"
 Step 3  [write_memory] → 不写入
 → END
-
+```
 
 ---
 
