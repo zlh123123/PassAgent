@@ -23,3 +23,8 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
 # --- 模型服务 ---
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8080/v1")
+
+# --- DeepSeek (临时测试用) ---
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")

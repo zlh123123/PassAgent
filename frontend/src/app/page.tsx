@@ -59,7 +59,7 @@ export default function WelcomePage(): React.ReactNode {
             </Link>
             <Link href="/auth/register">
               <Button className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium">
-                开始使用
+                注册
               </Button>
             </Link>
           </div>
@@ -78,21 +78,12 @@ export default function WelcomePage(): React.ReactNode {
             </p>
             <div className="flex gap-4 justify-center flex-wrap">
               <Link href="/auth/register">
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-lg px-8 group font-medium"
                 >
                   立即开始
                   <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </Button>
-              </Link>
-              <Link href="/auth/login">
-                <Button 
-                  size="lg" 
-                  variant="outline"
-                  className="border-slate-300 text-slate-900 hover:bg-slate-50 rounded-lg text-lg px-8 font-medium"
-                >
-                  已有账户登录
                 </Button>
               </Link>
             </div>

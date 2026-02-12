@@ -94,14 +94,19 @@ export function useChat(sessionId: string | null) {
             case "response_done": {
               // Finalize the assistant message
               setStreamingContent((currentContent) => {
+                const msgId = event.data.message_id as string;
                 const assistantMsg: ChatMessage = {
-                  message_id: event.data.message_id as string,
+                  message_id: msgId,
                   content: currentContent,
                   message_type: "assistant",
                   created_at: new Date().toISOString(),
                   agent_steps: null,
                 };
-                setMessages((prev) => [...prev, assistantMsg]);
+                setMessages((prev) => {
+                  // Avoid duplicate message_id
+                  if (prev.some((m) => m.message_id === msgId)) return prev;
+                  return [...prev, assistantMsg];
+                });
                 return "";
               });
               break;

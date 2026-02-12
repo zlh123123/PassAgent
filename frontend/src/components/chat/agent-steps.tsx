@@ -43,11 +43,11 @@ export function AgentSteps({ steps, isStreaming }: AgentStepsProps) {
   if (steps.length === 0) return null;
 
   return (
-    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <p className="mb-2 text-xs font-medium text-slate-500">Agent 执行步骤</p>
+    <div className="mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3">
+      <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">Agent 执行步骤</p>
       <div className="space-y-1.5">
         {steps.map((step, i) => (
-          <div key={i} className="flex items-start gap-2 text-sm text-slate-600">
+          <div key={i} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
             <StepIcon step={step} isLast={i === steps.length - 1} isStreaming={isStreaming} />
             <span className="leading-5">{formatStepText(step)}</span>
           </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 interface User {
   user_id: string;
+  email?: string;
   nickname: string | null;
   theme: string;
 }
@@ -29,8 +30,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const savedToken = localStorage.getItem("token");
     const savedUser = localStorage.getItem("user");
     if (savedToken && savedUser) {
+      const parsed = JSON.parse(savedUser);
       setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+      setUser(parsed);
+      // Apply saved theme
+      document.documentElement.classList.toggle("dark", parsed.theme === "dark");
     }
     setIsLoading(false);
   }, []);
@@ -49,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     document.cookie = "token=; path=/; max-age=0";
+    document.documentElement.classList.remove("dark");
     router.push("/auth/login");
   }
 
