@@ -1,5 +1,6 @@
 /models_deploy/models
 /backend/data
+/backend/storage
 .DS_Store
 # Byte-compiled / optimized / DLL files
 __pycache__/
