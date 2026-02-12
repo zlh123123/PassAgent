@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/chat/sidebar";
 import { SettingsPanel } from "@/components/chat/settings-panel";
@@ -43,6 +43,18 @@ export default function ChatLayout({
     },
     [deleteSession, currentSessionId, router],
   );
+
+  // Listen for session updates from chat messages
+  useEffect(() => {
+    const handleSessionUpdate = () => {
+      fetchSessions();
+    };
+
+    window.addEventListener("session-updated", handleSessionUpdate);
+    return () => {
+      window.removeEventListener("session-updated", handleSessionUpdate);
+    };
+  }, [fetchSessions]);
 
   return (
     <div className="flex h-screen bg-white dark:bg-slate-950">

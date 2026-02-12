@@ -119,6 +119,8 @@ export function useChat(sessionId: string | null) {
             case "done":
               setIsLoading(false);
               setAgentSteps([]);
+              // Trigger custom event to notify session list should be refreshed
+              window.dispatchEvent(new CustomEvent("session-updated"));
               break;
           }
         },
