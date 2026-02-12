@@ -1,25 +1,24 @@
 """SQLite 连接管理"""
+from dotenv import load_dotenv
+load_dotenv()
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# 数据库文件路径
 DATABASE_PATH = os.getenv("DATABASE_PATH", "passagent.db")
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
-# 创建引擎
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},  # SQLite 需要
+    connect_args={"check_same_thread": False},
     echo=False,
 )
 
-# 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_db():
-    """获取数据库会话（FastAPI 依赖注入用）"""
+    """获取数据库会话"""
     db = SessionLocal()
     try:
         yield db
