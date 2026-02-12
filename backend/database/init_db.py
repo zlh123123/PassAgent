@@ -10,7 +10,7 @@ def init_database():
 
 
 def drop_database():
-    """删除所有表（谨慎使用）"""
+    """删除所有表"""
     Base.metadata.drop_all(bind=engine)
     print("数据库表已删除")
 
