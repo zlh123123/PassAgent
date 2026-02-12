@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM 模型（7张表）"""
+"""数据库设计"""
 from sqlalchemy import Column, Text, Integer, LargeBinary, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 
