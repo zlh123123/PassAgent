@@ -6,9 +6,12 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "sqlalchemy",
-    "pydantic",
+    "pydantic[email]",
     "pillow",
     "zxcvbn",
     "httpx",
     "langgraph>=1.0.8",
+    "bcrypt",
+    "PyJWT",
+    "python-dotenv",
 ]

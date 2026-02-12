@@ -1,11 +1,9 @@
 """SQLite 连接管理"""
-from dotenv import load_dotenv
-load_dotenv()
-import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_PATH = os.getenv("DATABASE_PATH", "passagent.db")
+from config import DATABASE_PATH
+
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 engine = create_engine(
