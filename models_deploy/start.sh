@@ -13,6 +13,7 @@ export OMP_NUM_THREADS=1
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODEL_DIR="${MODEL_DIR:-$SCRIPT_DIR/models}"
 HOST="${VLLM_HOST:-0.0.0.0}"
+# 32b模型至少需要0.7
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.9}"
 
 # 模型路径
