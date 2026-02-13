@@ -1,81 +1,95 @@
-"""worker_loop 协程：FIFO 取任务、调 DeepSeek、塞事件"""
+"""worker_loop 协程：FIFO 取任务、调 Agent Graph、塞事件"""
 import asyncio
-import json
-from openai import AsyncOpenAI
 
-from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from langchain_core.messages import HumanMessage, AIMessage
+
 from worker.queue import task_queue, ChatTask
 from database.connection import SessionLocal
 from services.session_service import save_message, get_messages
-
-SYSTEM_PROMPT = """你是 PassAgent，一个基于大语言模型的口令安全智能助手。你可以帮助用户：
-1. 评估口令强度
-2. 检测口令是否泄露
-3. 生成安全且好记的口令
-4. 通过记忆片段恢复遗忘的口令
-5. 提供口令安全建议
-
-请用中文回复，保持专业且友好的语气。在回复末尾自然地附带 2-3 个引导性建议。"""
-
-
-def _get_client() -> AsyncOpenAI:
-    return AsyncOpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_BASE_URL,
-    )
+from agent.graph import agent_graph
 
 
 async def _process_task(task: ChatTask):
-    """处理单个聊天任务"""
+    """处理单个聊天任务：通过 Agent Graph 执行。"""
     task.status = "processing"
     await task.event_queue.put({"event": "task_started", "data": {"task_id": task.task_id}})
 
     try:
-        # Load conversation history from DB
+        # 从 DB 加载对话历史
         db = SessionLocal()
         try:
             history = get_messages(db, task.user_id, task.session_id)
         finally:
             db.close()
 
-        # Build messages for DeepSeek
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # 构建 LangGraph messages
+        messages = []
         for msg in history:
-            role = "user" if msg["message_type"] == "human" else "assistant"
-            messages.append({"role": role, "content": msg["content"]})
-        # Add current message
-        messages.append({"role": "user", "content": task.message})
+            if msg["message_type"] == "human":
+                messages.append(HumanMessage(content=msg["content"]))
+            else:
+                messages.append(AIMessage(content=msg["content"]))
+        # 追加当前用户消息
+        messages.append(HumanMessage(content=task.message))
 
-        # Save user message to DB
+        # 保存用户消息到 DB
         db = SessionLocal()
         try:
             save_message(db, task.session_id, task.user_id, task.message, "human")
         finally:
             db.close()
 
-        # Call DeepSeek with streaming
-        client = _get_client()
-        stream = await client.chat.completions.create(
-            model=DEEPSEEK_MODEL,
-            messages=messages,
-            stream=True,
-        )
+        # 收集 agent_steps（从 event_queue 旁路收集）
+        agent_steps: list[dict] = []
+        inner_queue = asyncio.Queue()
 
+        async def _event_proxy():
+            """代理事件：转发给前端 SSE，同时收集 agent_step。"""
+            while True:
+                event = await inner_queue.get()
+                # 收集 agent_step
+                if event.get("event") == "agent_step":
+                    agent_steps.append(event.get("data", {}))
+                # 转发给前端
+                await task.event_queue.put(event)
+                inner_queue.task_done()
+
+        proxy_task = asyncio.create_task(_event_proxy())
+
+        # 构建初始 state 并调用 graph
+        initial_state = {
+            "messages": messages,
+            "user_id": task.user_id,
+            "session_id": task.session_id,
+            "memories": [],
+            "tool_history": [],
+            "next_action": None,
+            "action_params": {},
+            "uploaded_files": [],
+            "loop_count": 0,
+            "_event_queue": inner_queue,
+        }
+
+        result = await agent_graph.ainvoke(initial_state)
+
+        # 等待 inner_queue 中的事件全部处理完
+        await inner_queue.join()
+        proxy_task.cancel()
+
+        # 从 result 中提取最终回复
+        final_messages = result.get("messages", [])
         full_content = ""
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                content = chunk.choices[0].delta.content
-                full_content += content
-                await task.event_queue.put({
-                    "event": "response_chunk",
-                    "data": {"content": content},
-                })
+        for msg in reversed(final_messages):
+            if isinstance(msg, AIMessage):
+                full_content = msg.content
+                break
 
-        # Save assistant message to DB
+        # 保存助手消息到 DB（附带 agent_steps）
         db = SessionLocal()
         try:
             message_id = save_message(
-                db, task.session_id, task.user_id, full_content, "assistant"
+                db, task.session_id, task.user_id, full_content, "assistant",
+                agent_steps=agent_steps if agent_steps else None,
             )
         finally:
             db.close()
@@ -93,7 +107,6 @@ async def _process_task(task: ChatTask):
             "event": "task_failed",
             "data": {"error": str(e)},
         })
-
     finally:
         await task.event_queue.put({"event": "done", "data": {}})
 
