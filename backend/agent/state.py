@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import operator
-from typing import Annotated, TypedDict
+from typing import Any, Annotated, TypedDict
 
 from langgraph.graph import MessagesState
 
@@ -36,3 +36,4 @@ class PassAgentState(MessagesState):
     action_params: dict
     uploaded_files: list[dict]
     loop_count: int
+    _event_queue: Any

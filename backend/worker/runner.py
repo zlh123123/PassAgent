@@ -39,22 +39,17 @@ async def _process_task(task: ChatTask):
         finally:
             db.close()
 
-        # 收集 agent_steps（从 event_queue 旁路收集）
+        # 使用一个能同时收集 agent_steps 的队列包装
         agent_steps: list[dict] = []
-        inner_queue = asyncio.Queue()
 
-        async def _event_proxy():
-            """代理事件：转发给前端 SSE，同时收集 agent_step。"""
-            while True:
-                event = await inner_queue.get()
-                # 收集 agent_step
+        class CollectingQueue:
+            """包装 task.event_queue，同时收集 agent_step 事件。"""
+            async def put(self, event):
                 if event.get("event") == "agent_step":
                     agent_steps.append(event.get("data", {}))
-                # 转发给前端
                 await task.event_queue.put(event)
-                inner_queue.task_done()
 
-        proxy_task = asyncio.create_task(_event_proxy())
+        collecting_queue = CollectingQueue()
 
         # 构建初始 state 并调用 graph
         initial_state = {
@@ -67,14 +62,10 @@ async def _process_task(task: ChatTask):
             "action_params": {},
             "uploaded_files": [],
             "loop_count": 0,
-            "_event_queue": inner_queue,
+            "_event_queue": collecting_queue,
         }
 
         result = await agent_graph.ainvoke(initial_state)
-
-        # 等待 inner_queue 中的事件全部处理完
-        await inner_queue.join()
-        proxy_task.cancel()
 
         # 从 result 中提取最终回复
         final_messages = result.get("messages", [])

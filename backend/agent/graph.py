@@ -143,6 +143,7 @@ def build_graph() -> StateGraph:
 # ---------- 注册所有工具（必须在 build_graph 之前） ----------
 import agent.memory.retrieve_tool  # noqa: F401, E402
 import agent.tools.strength.keyboard_tool  # noqa: F401, E402
+import agent.tools.strength.zxcvbn_tool  # noqa: F401, E402
 
 # 编译好的 graph 实例，供 runner 直接调用
 agent_graph = build_graph()
