@@ -126,19 +126,13 @@ async def planner_node(state: PassAgentState) -> dict:
     if context:
         messages.append({"role": "system", "content": f"[当前状态]\n{context}"})
 
-    # 调用 LLM（Qwen3 需关闭 thinking 模式以稳定 tool calling）
+    # 调用 LLM
     response = await client.chat.completions.create(
         model=LLM_MODEL,
         messages=messages,
         tools=TOOL_DEFINITIONS,
         tool_choice="auto",
         max_tokens=1024,
-        temperature=0.7,
-        top_p=0.8,
-        extra_body={
-            "repetition_penalty": 1.05,
-            "chat_template_kwargs": {"enable_thinking": False},
-        },
     )
 
     choice = response.choices[0]

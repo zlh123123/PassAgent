@@ -14,14 +14,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODEL_DIR="${MODEL_DIR:-$SCRIPT_DIR/models}"
 HOST="${VLLM_HOST:-0.0.0.0}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.9}"
-ENABLE_OMNI="${ENABLE_OMNI:-1}"
 
 # 模型路径
-QWEN_7B_PATH="${QWEN_7B_PATH:-$MODEL_DIR/Qwen3-4b}"
+QWEN_PATH="${QWEN_PATH:-$MODEL_DIR/Qwen2.5-7B-Instruct}"
 QWEN_1_7B_PATH="${QWEN_1_7B_PATH:-$MODEL_DIR/PassRules}"
 
 # 端口
-QWEN_3_4B_PORT="${QWEN_3_4B_PORT:-6006}"
+QWEN_PORT="${QWEN_PORT:-6006}"
 PASSRULES_PORT="${PASSRULES_PORT:-6008}"
 
 # PID 文件，方便停止
@@ -38,20 +37,19 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-# ---------- 启动 Qwen3-4b（Agent 主力模型） ----------
-echo "启动 Qwen3-4b -> $HOST:$QWEN_3_4B_PORT"
+# ---------- 启动 Qwen2.5-7B-Instruct（Agent 主力模型） ----------
+echo "启动 Qwen2.5-7B-Instruct -> $HOST:$QWEN_PORT"
 python -m vllm.entrypoints.openai.api_server \
-    --model "$QWEN_7B_PATH" \
+    --model "$QWEN_PATH" \
     --host "$HOST" \
-    --port "$QWEN_3_4B_PORT" \
+    --port "$QWEN_PORT" \
     --gpu-memory-utilization "$GPU_MEM_UTIL" \
     --trust-remote-code \
     --dtype auto \
     --max-model-len 8192 \
     --enable-auto-tool-choice \
     --tool-call-parser hermes \
-    --reasoning-parser deepseek_r1 \
-    --served-model-name "Qwen3-4b" &
+    --served-model-name "Qwen2.5-7B-Instruct" &
 echo $! >> "$PID_FILE"
 
 # ---------- 启动 PassRules 微调模型 ----------
@@ -65,25 +63,9 @@ echo $! >> "$PID_FILE"
 #     --dtype auto &
 # echo $! >> "$PID_FILE"
 
-# ---------- 可选：启动 Qwen-Omni ----------
-# QWEN_OMNI_PATH="${QWEN_OMNI_PATH:-$MODEL_DIR/Qwen2_5_omni}"
-# if [ "${ENABLE_OMNI}" = "1" ] && [ -d "$QWEN_OMNI_PATH" ]; then
-#     QWEN_OMNI_PORT="${QWEN_OMNI_PORT:-8082}"
-#     echo "启动 Qwen2_5_omni -> $HOST:$QWEN_OMNI_PORT"
-#     echo "  Qwen2_5_omni: http://$HOST:$QWEN_OMNI_PORT/v1"
-#     python -m vllm.entrypoints.openai.api_server \
-#         --model "$QWEN_OMNI_PATH" \
-#         --host "$HOST" \
-#         --port "$QWEN_OMNI_PORT" \
-#         --gpu-memory-utilization "$GPU_MEM_UTIL" \
-#         --trust-remote-code \
-#         --dtype auto &
-#     echo $! >> "$PID_FILE"
-# fi
-
 echo ""
 echo "所有模型已启动，按 Ctrl+C 停止全部服务"
-echo "  Qwen3-4b:  http://$HOST:$QWEN_3_4B_PORT/v1"
+echo "  Qwen2.5-7B-Instruct: http://$HOST:$QWEN_PORT/v1"
 
 # 等待任一进程退出
 wait -n

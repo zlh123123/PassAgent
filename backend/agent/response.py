@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from openai import AsyncOpenAI
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from agent.state import PassAgentState
+
+logger = logging.getLogger(__name__)
 
 
 def _build_respond_system_prompt(state: PassAgentState) -> str:
@@ -85,12 +88,17 @@ async def respond_node(state: PassAgentState) -> dict:
         model=LLM_MODEL,
         messages=messages,
         stream=True,
+        max_tokens=2048,
     )
 
     full_content = ""
     async for chunk in stream:
-        if chunk.choices and chunk.choices[0].delta.content:
-            content = chunk.choices[0].delta.content
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+        # Qwen3: content 可能为空，实际文本在 reasoning_content 里
+        content = delta.content or getattr(delta, "reasoning_content", None) or ""
+        if content:
             full_content += content
             # 推送 SSE 事件
             if event_queue is not None:
@@ -98,6 +106,10 @@ async def respond_node(state: PassAgentState) -> dict:
                     "event": "response_chunk",
                     "data": {"content": content},
                 })
+
+    if not full_content:
+        logger.warning("respond_node: LLM 未返回任何文本内容")
+        full_content = "抱歉，我暂时无法生成回复，请再试一次。"
 
     # 将完整回复作为 AIMessage 追加到 messages
     from langchain_core.messages import AIMessage

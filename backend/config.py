@@ -24,4 +24,4 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 # --- 模型服务（本地 vLLM） ---
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:6006/v1")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "EMPTY")
-LLM_MODEL = os.getenv("LLM_MODEL", "Qwen3-4b")
+LLM_MODEL = os.getenv("LLM_MODEL", "Qwen2.5-7B-Instruct")
