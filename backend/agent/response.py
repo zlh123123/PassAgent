@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from openai import AsyncOpenAI
 
-from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from agent.state import PassAgentState
 
 
@@ -60,7 +60,7 @@ async def respond_node(state: PassAgentState) -> dict:
     通过 state 中注入的 event_queue 将 response_chunk 事件推送给 SSE。
     返回对 state 的 partial update，将完整回复追加到 messages。
     """
-    client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     event_queue = state.get("_event_queue")  # 运行时注入，不属于 TypedDict
 
     # 构建消息
@@ -82,7 +82,7 @@ async def respond_node(state: PassAgentState) -> dict:
 
     # 流式调用 LLM
     stream = await client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
+        model=LLM_MODEL,
         messages=messages,
         stream=True,
     )

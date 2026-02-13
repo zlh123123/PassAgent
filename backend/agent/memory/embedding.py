@@ -4,16 +4,15 @@ from __future__ import annotations
 import struct
 from openai import AsyncOpenAI
 
-from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL
+from config import LLM_API_KEY, LLM_BASE_URL
 
-# DeepSeek 目前不提供 embedding 端点，可切换为其他兼容服务
-# 如果 EMBEDDING_MODEL 为空则回退到关键词匹配（reader 中处理）
+# 如果本地模型不支持 embedding 端点，回退到关键词匹配（reader 中处理）
 EMBEDDING_MODEL = "text-embedding-ada-002"  # 按实际可用模型替换
 EMBEDDING_DIM = 1536
 
 
 def _get_client() -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    return AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
 
 async def get_embedding(text: str) -> list[float] | None:

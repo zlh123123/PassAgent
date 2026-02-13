@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session as DBSession
 
-from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from database.models import UserMemory
 from agent.memory.embedding import get_embedding, embedding_to_bytes
 
@@ -42,7 +42,7 @@ async def extract_and_save_memories(
     Returns:
         新保存的记忆列表
     """
-    client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
     messages = [
         {"role": "system", "content": EXTRACT_PROMPT},
@@ -54,7 +54,7 @@ async def extract_and_save_memories(
 
     try:
         resp = await client.chat.completions.create(
-            model=DEEPSEEK_MODEL,
+            model=LLM_MODEL,
             messages=messages,
             temperature=0,
         )

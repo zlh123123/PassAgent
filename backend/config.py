@@ -21,10 +21,7 @@ EMAIL_FROM = os.getenv("EMAIL_FROM", "noreply@passagent.dev")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 
-# --- 模型服务 ---
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8080/v1")
-
-# --- DeepSeek (临时测试用) ---
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+# --- 模型服务（本地 vLLM） ---
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:6006/v1")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "EMPTY")
+LLM_MODEL = os.getenv("LLM_MODEL", "Qwen3-4b")

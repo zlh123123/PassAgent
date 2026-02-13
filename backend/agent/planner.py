@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from openai import AsyncOpenAI
 
-from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from agent.state import PassAgentState
 from agent.tools.definitions import TOOL_DEFINITIONS
 
@@ -107,7 +107,7 @@ async def planner_node(state: PassAgentState) -> dict:
     - action_params: 传给工具的参数
     - loop_count: +1
     """
-    client = AsyncOpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
     # 构建消息列表
     messages = [{"role": "system", "content": PLANNER_SYSTEM_PROMPT}]
@@ -126,12 +126,19 @@ async def planner_node(state: PassAgentState) -> dict:
     if context:
         messages.append({"role": "system", "content": f"[当前状态]\n{context}"})
 
-    # 调用 LLM
+    # 调用 LLM（Qwen3 需关闭 thinking 模式以稳定 tool calling）
     response = await client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
+        model=LLM_MODEL,
         messages=messages,
         tools=TOOL_DEFINITIONS,
-        tool_choice="required",
+        tool_choice="auto",
+        max_tokens=1024,
+        temperature=0.7,
+        top_p=0.8,
+        extra_body={
+            "repetition_penalty": 1.05,
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
     )
 
     choice = response.choices[0]
