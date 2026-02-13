@@ -54,6 +54,12 @@ export function SettingsPanel({ open, onOpenChange }: SettingsPanelProps) {
   const [newMemory, setNewMemory] = useState("");
   const [newMemoryType, setNewMemoryType] = useState<"PREFERENCE" | "FACT" | "CONSTRAINT">("FACT");
 
+  const memoryPlaceholders: Record<typeof newMemoryType, string> = {
+    FACT: "例如：我的小猫叫哈吉米",
+    PREFERENCE: "例如：喜欢8位以上的密码",
+    CONSTRAINT: "例如：至少包含两个特殊字符",
+  };
+
   useEffect(() => {
     if (open && user) {
       setNickname(user.nickname || "");
@@ -221,7 +227,7 @@ export function SettingsPanel({ open, onOpenChange }: SettingsPanelProps) {
                   <Input
                     value={newMemory}
                     onChange={(e) => setNewMemory(e.target.value)}
-                    placeholder="例如：位密码"
+                    placeholder={memoryPlaceholders[newMemoryType]}
                     className="flex-1"
                     onKeyDown={(e) => e.key === "Enter" && handleAddMemory()}
                   />

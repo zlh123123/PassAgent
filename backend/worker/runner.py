@@ -7,6 +7,7 @@ from worker.queue import task_queue, ChatTask
 from database.connection import SessionLocal
 from services.session_service import save_message, get_messages
 from agent.graph import agent_graph
+from agent.memory.writer import extract_and_save_memories
 
 
 async def _process_task(task: ChatTask):
@@ -84,6 +85,18 @@ async def _process_task(task: ChatTask):
             )
         finally:
             db.close()
+
+        # 异步提取记忆（不阻塞主流程）
+        try:
+            db = SessionLocal()
+            try:
+                await extract_and_save_memories(
+                    db, task.user_id, task.message, full_content,
+                )
+            finally:
+                db.close()
+        except Exception:
+            pass  # 记忆提取失败不影响正常响应
 
         await task.event_queue.put({
             "event": "response_done",

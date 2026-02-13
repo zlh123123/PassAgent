@@ -25,3 +25,7 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:6006/v1")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "EMPTY")
 LLM_MODEL = os.getenv("LLM_MODEL", "Qwen2.5-7B-Instruct")
+
+# --- Embedding 服务（SiliconFlow） ---
+EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1")
+EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")

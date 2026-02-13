@@ -1,18 +1,17 @@
-"""文本向量化：调用 Embedding API 生成向量 & 余弦相似度计算"""
+"""文本向量化：调用 SiliconFlow BGE Embedding API 生成向量 & 余弦相似度计算"""
 from __future__ import annotations
 
 import struct
 from openai import AsyncOpenAI
 
-from config import LLM_API_KEY, LLM_BASE_URL
+from config import EMBEDDING_API_KEY, EMBEDDING_BASE_URL
 
-# 如果本地模型不支持 embedding 端点，回退到关键词匹配（reader 中处理）
-EMBEDDING_MODEL = "text-embedding-ada-002"  # 按实际可用模型替换
-EMBEDDING_DIM = 1536
+EMBEDDING_MODEL = "BAAI/bge-large-zh-v1.5"
+EMBEDDING_DIM = 1024
 
 
 def _get_client() -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+    return AsyncOpenAI(api_key=EMBEDDING_API_KEY, base_url=EMBEDDING_BASE_URL)
 
 
 async def get_embedding(text: str) -> list[float] | None:

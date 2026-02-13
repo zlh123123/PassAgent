@@ -13,6 +13,7 @@ from schemas.memory import (
     CreateMemoryRequest,
     CreateMemoryResponse,
 )
+from agent.memory.embedding import get_embedding, embedding_to_bytes
 
 router = APIRouter(prefix="/api/memories", tags=["memories"])
 
@@ -43,7 +44,7 @@ def list_memories(
 
 
 @router.post("", response_model=CreateMemoryResponse)
-def create_memory(
+async def create_memory(
     body: CreateMemoryRequest,
     user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
@@ -54,12 +55,18 @@ def create_memory(
             detail="memory_type 必须是 PREFERENCE / FACT / CONSTRAINT",
         )
     memory_id = str(uuid.uuid4())
+
+    # 生成 embedding 向量，失败不阻塞
+    vec = await get_embedding(body.content)
+    emb_bytes = embedding_to_bytes(vec) if vec else None
+
     memory = UserMemory(
         memory_id=memory_id,
         user_id=user.user_id,
         content=body.content,
         memory_type=body.memory_type,
         source="manual",
+        embedding=emb_bytes,
         created_at=datetime.now(timezone.utc).isoformat(),
     )
     db.add(memory)
