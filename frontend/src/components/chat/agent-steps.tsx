@@ -23,15 +23,10 @@ function StepIcon({ step, isLast, isStreaming }: { step: AgentStep; isLast: bool
 function formatStepText(step: AgentStep): string {
   if (step.node === "planner" && step.action) {
     if (step.action === "respond") return "准备生成回复";
-    return `决定调用 ${step.action}`;
+    return `调用 ${step.action}`;
   }
   if (step.summary) {
-    const entries = Object.entries(step.summary);
-    if (entries.length === 0) return `${step.node} 完成`;
-    const summaryText = entries
-      .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-      .join(", ");
-    return `${step.node} → ${summaryText}`;
+    return `${step.node} 完成`;
   }
   if (step.reasoning) {
     return `${step.node}: ${step.reasoning}`;

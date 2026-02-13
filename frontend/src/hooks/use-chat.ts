@@ -95,17 +95,19 @@ export function useChat(sessionId: string | null) {
               // Finalize the assistant message
               setStreamingContent((currentContent) => {
                 const msgId = event.data.message_id as string;
-                const assistantMsg: ChatMessage = {
-                  message_id: msgId,
-                  content: currentContent,
-                  message_type: "assistant",
-                  created_at: new Date().toISOString(),
-                  agent_steps: null,
-                };
-                setMessages((prev) => {
-                  // Avoid duplicate message_id
-                  if (prev.some((m) => m.message_id === msgId)) return prev;
-                  return [...prev, assistantMsg];
+                setAgentSteps((currentSteps) => {
+                  const assistantMsg: ChatMessage = {
+                    message_id: msgId,
+                    content: currentContent,
+                    message_type: "assistant",
+                    created_at: new Date().toISOString(),
+                    agent_steps: currentSteps.length > 0 ? currentSteps : null,
+                  };
+                  setMessages((prev) => {
+                    if (prev.some((m) => m.message_id === msgId)) return prev;
+                    return [...prev, assistantMsg];
+                  });
+                  return [];
                 });
                 return "";
               });
@@ -118,7 +120,6 @@ export function useChat(sessionId: string | null) {
 
             case "done":
               setIsLoading(false);
-              setAgentSteps([]);
               // Trigger custom event to notify session list should be refreshed
               window.dispatchEvent(new CustomEvent("session-updated"));
               break;

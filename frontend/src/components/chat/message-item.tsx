@@ -1,6 +1,7 @@
 "use client";
 
 import { type ChatMessage } from "@/hooks/use-chat";
+import { AgentSteps } from "./agent-steps";
 import { MarkdownText } from "./markdown-text";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,9 @@ export function MessageItem({ message }: MessageItemProps) {
             : "bg-transparent",
         )}
       >
+        {!isHuman && message.agent_steps && message.agent_steps.length > 0 && (
+          <AgentSteps steps={message.agent_steps} isStreaming={false} />
+        )}
         {isHuman ? (
           <p className="whitespace-pre-wrap text-sm">{message.content}</p>
         ) : (
