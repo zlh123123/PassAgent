@@ -4,115 +4,160 @@ from __future__ import annotations
 import json
 import logging
 from openai import AsyncOpenAI
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from agent.state import PassAgentState
 
 logger = logging.getLogger(__name__)
 
-
 def _build_respond_system_prompt(state: PassAgentState) -> str:
-    """根据 tool_history 长度选择回复模式，构建 system prompt。"""
-    tool_count = len(state.get("tool_history", []))
+    """构建增强版 System Prompt，强化专家人设和输出结构。"""
+    tool_history = state.get("tool_history", [])
+    tool_count = len(tool_history)
+    
+    # 基础人设
+    base_persona = """
+你叫 PassAgent，是用户的**个人口令安全审计专家**。你的核心职责是评估风险、发现隐患并提供加固建议。
+你的回答必须：
+1. **准确严谨**：基于工具返回的数据说话，不要编造未检测到的风险。
+2. **通俗易懂**：将技术术语（如"哈希碰撞"、"熵值"）转化为用户能懂的语言。
+3. **安全第一**：如果工具返回了敏感信息（如明文密码），在回复中应进行打码处理（如 `P***d`），除非用户明确要求显示。
+"""
 
+    # 动态任务指令
     if tool_count == 0:
-        mode_hint = "这是一个闲聊或拒绝场景，无工具调用结果。如果是与口令安全无关的问题，友好地引导用户使用口令相关功能。如果是恶意请求，礼貌拒绝。如果是信息不足，追问用户。"
-    elif tool_count <= 2:
-        mode_hint = "工具调用结果较少，请给出简短精炼的回复。"
+        task_instruction = """
+当前状态：**闲聊或意图识别阶段**
+- 如果用户是在打招呼，请热情回应并简述你能做什么（如：检测密码强度、生成抗破解规则、查询泄露库）。
+- 如果用户的问题超出了"口令安全"范畴，请礼貌地将话题引导回你的专业领域。
+- 拒绝处理任何非法的破解请求（如"帮我破解隔壁的WiFi"）。
+"""
     else:
-        mode_hint = "工具调用结果较多，请给出详细的分析报告。"
+        task_instruction = """
+当前状态：**分析报告生成阶段**
+请根据下方的 `<tool_outputs>` 生成回复。遵循以下格式：
 
-    return f"""\
-你是 PassAgent，一个基于大语言模型的口令安全智能助手。请根据工具调用结果生成最终回复。
+### 1. 核心结论
+用一句话概括结果（例如："检测通过，您的密码强度极高" 或 "警告：发现该密码在3个泄露库中出现"）。
 
-## 回复要求
-- 用中文回复，保持专业且友好的语气
-- {mode_hint}
-- 在回复末尾自然地附带 2-3 个引导性建议（作为回复文本的一部分，不要单独结构化输出）
-- 引导建议用换行和 emoji 前缀，例如：
-  - 🔍 查看这个密码是否泄露
-  - 🔑 帮我生成一个更安全的密码
-- 不要暴露内部工具名称，用自然语言描述分析过程
-- 如果涉及密码强度评分，用直观的方式表达（如 "评分 1/4，较弱"）"""
+### 2. 详细分析
+- 解读工具返回的数据，不要直接罗列 JSON 字段。
+- 如果涉及评分，请用直观描述（如 🔴高危、🟡中等、🟢安全）。
+- 解释为什么会得出这个结论（例如："因为它由纯数字组成"）。
+
+### 3. 后续建议
+- 针对当前情况给出 2-3 条具体行动建议。
+- 建议必须具有可操作性。
+"""
+
+    return f"{base_persona}\n{task_instruction}"
 
 
-def _build_tool_results_message(state: PassAgentState) -> str:
-    """将 tool_history 格式化为 LLM 可读的上下文。"""
-    if not state.get("tool_history"):
-        return ""
+def _build_tool_context(state: PassAgentState) -> str:
+    """将工具结果和记忆格式化为结构清晰的 XML 上下文，便于 Qwen 理解。"""
+    
+    context_parts = []
 
-    parts = ["以下是本轮工具调用结果：\n"]
-    for i, t in enumerate(state["tool_history"], 1):
-        tool_name = t["tool_name"]
-        params = json.dumps(t.get("params", {}), ensure_ascii=False)
-        result = json.dumps(t.get("result", {}), ensure_ascii=False)
-        parts.append(f"{i}. [{tool_name}] 参数: {params}\n   结果: {result}\n")
+    # 1. 处理工具调用历史
+    if state.get("tool_history"):
+        tools_str = []
+        for i, t in enumerate(state["tool_history"], 1):
+            tool_name = t["tool_name"]
+            # 简化 result，防止过长 JSON 撑爆上下文
+            result_str = json.dumps(t.get("result", {}), ensure_ascii=False)
+            status = "成功" if t.get("status") != "error" else "失败"
+            
+            tools_str.append(f"""
+<tool_execution id="{i}">
+    <name>{tool_name}</name>
+    <status>{status}</status>
+    <result>{result_str}</result>
+</tool_execution>""")
+        
+        context_parts.append("<tool_outputs>\n" + "\n".join(tools_str) + "\n</tool_outputs>")
 
-    # 记忆上下文
+    # 2. 处理长期记忆 (User Profile)
     if state.get("memories"):
-        parts.append("\n用户记忆：")
+        mem_str = []
         for mem in state["memories"]:
-            parts.append(f"  - [{mem.get('memory_type', '')}] {mem.get('content', '')}")
+            m_type = mem.get('memory_type', 'INFO')
+            content = mem.get('content', '')
+            mem_str.append(f"- [{m_type}] {content}")
+        
+        context_parts.append("<user_profile>\n" + "\n".join(mem_str) + "\n</user_profile>")
 
-    return "\n".join(parts)
+    return "\n\n".join(context_parts)
 
 
 async def respond_node(state: PassAgentState) -> dict:
-    """Respond 节点：流式生成最终回复。
-
-    通过 state 中注入的 event_queue 将 response_chunk 事件推送给 SSE。
-    返回对 state 的 partial update，将完整回复追加到 messages。
-    """
+    """Respond 节点：流式生成最终回复。"""
     client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-    event_queue = state.get("_event_queue")  # 运行时注入，不属于 TypedDict
+    event_queue = state.get("_event_queue")
 
-    # 构建消息
-    messages = [{"role": "system", "content": _build_respond_system_prompt(state)}]
+    # 1. 构建 System Prompt
+    system_content = _build_respond_system_prompt(state)
+    
+    # 2. 构建上下文数据 (工具结果 + 记忆)
+    context_content = _build_tool_context(state)
+    
+    # 3. 组装 Messages
+    # 这里的技巧是：把 System Prompt 放在最前，把工具数据作为 System Message 紧随其后
+    # 或者作为 User Message 的补充。对于 Qwen，分开放 System 效果较好。
+    messages = [
+        {"role": "system", "content": system_content},
+    ]
 
-    # 对话历史
+    # 如果有工具上下文，作为辅助 System 信息插入
+    if context_content:
+        messages.append({
+            "role": "system", 
+            "content": f"请基于以下上下文数据回答用户：\n{context_content}"
+        })
+
+    # 追加历史对话
     for msg in state["messages"]:
         if hasattr(msg, "type"):
             role = "user" if msg.type == "human" else "assistant"
         else:
             role = msg.get("role", "user")
-        content = msg.content if hasattr(msg, "content") else msg.get("content", "")
+        content = msg.content if hasattr(msg, "content") else str(msg.get("content", ""))
         messages.append({"role": role, "content": content})
 
-    # 工具结果上下文
-    tool_context = _build_tool_results_message(state)
-    if tool_context:
-        messages.append({"role": "system", "content": tool_context})
-
     # 流式调用 LLM
-    stream = await client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=messages,
-        stream=True,
-        max_tokens=2048,
-    )
+    try:
+        stream = await client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            stream=True,
+            temperature=0.7, # 稍微降低温度，保证分析的严谨性
+            max_tokens=2048,
+        )
 
-    full_content = ""
-    async for chunk in stream:
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        # Qwen3: content 可能为空，实际文本在 reasoning_content 里
-        content = delta.content or getattr(delta, "reasoning_content", None) or ""
-        if content:
-            full_content += content
-            # 推送 SSE 事件
-            if event_queue is not None:
-                await event_queue.put({
-                    "event": "response_chunk",
-                    "data": {"content": content},
-                })
+        full_content = ""
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            # 兼容 DeepSeek/Qwen 的不同字段
+            content = delta.content or getattr(delta, "reasoning_content", None) or ""
+            
+            if content:
+                full_content += content
+                if event_queue is not None:
+                    await event_queue.put({
+                        "event": "response_chunk",
+                        "data": {"content": content},
+                    })
+    except Exception as e:
+        logger.error(f"LLM调用失败: {e}")
+        full_content = "抱歉，我的大脑暂时短路了，请检查后台日志。"
+        if event_queue:
+            await event_queue.put({"event": "response_chunk", "data": {"content": full_content}})
 
     if not full_content:
-        logger.warning("respond_node: LLM 未返回任何文本内容")
-        full_content = "抱歉，我暂时无法生成回复，请再试一次。"
+        full_content = "（未生成任何内容，请检查工具输出是否过长导致截断）"
 
-    # 将完整回复作为 AIMessage 追加到 messages
-    from langchain_core.messages import AIMessage
     return {
         "messages": [AIMessage(content=full_content)],
         "next_action": None,

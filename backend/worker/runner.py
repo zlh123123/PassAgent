@@ -1,5 +1,6 @@
 """worker_loop 协程：FIFO 取任务、调 Agent Graph、塞事件"""
 import asyncio
+import logging
 
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -8,6 +9,9 @@ from database.connection import SessionLocal
 from services.session_service import save_message, get_messages
 from agent.graph import agent_graph
 from agent.memory.writer import extract_and_save_memories
+from agent.memory.reader import retrieve_memory
+
+logger = logging.getLogger(__name__)
 
 
 async def _process_task(task: ChatTask):
@@ -52,12 +56,23 @@ async def _process_task(task: ChatTask):
 
         collecting_queue = CollectingQueue()
 
+        # 预加载用户记忆，让 planner 第一轮决策就能看到记忆上下文
+        preloaded_memories: list[dict] = []
+        try:
+            db = SessionLocal()
+            try:
+                preloaded_memories = await retrieve_memory(db, task.user_id, task.message)
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning("预加载记忆失败: %s", e)
+
         # 构建初始 state 并调用 graph
         initial_state = {
             "messages": messages,
             "user_id": task.user_id,
             "session_id": task.session_id,
-            "memories": [],
+            "memories": preloaded_memories,
             "tool_history": [],
             "next_action": None,
             "action_params": {},

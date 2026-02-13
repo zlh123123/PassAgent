@@ -2,29 +2,33 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session as DBSession
 
+logger = logging.getLogger(__name__)
+
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from database.models import UserMemory
 from agent.memory.embedding import get_embedding, embedding_to_bytes
 
 EXTRACT_PROMPT = """\
-你是一个记忆提取器。从用户的对话中提取值得长期记住的信息。
+你是一个记忆提取器。从用户的对话中提取值得长期记住的个人信息。
 
 ## 记忆类型
 - PREFERENCE: 用户偏好（如"喜欢用特殊字符"、"密码长度偏好16位"）
-- FACT: 个人事实（如"生日是1995年3月"、"养了一只叫Mimi的猫"、"常用邮箱是xxx"）
+- FACT: 个人事实（如"生日是1995年3月"、"养了一只叫Mimi的猫"、"常用邮箱是xxx"、"女朋友叫小红"、"喜欢篮球"）
 - CONSTRAINT: 约束条件（如"公司要求密码每90天更换"、"不能包含用户名"）
 
 ## 规则
-1. 只提取与口令安全相关的、值得长期记住的信息
-2. 不要提取临时性的、一次性的信息（如"帮我检测这个密码"）
+1. 提取所有可能用于个性化口令生成的个人信息，包括但不限于：宠物名、人名、昵称、生日、纪念日、爱好、常用网站、邮箱、手机号等
+2. 不要提取临时性的、一次性的操作指令（如"帮我检测这个密码"、"你好"）
 3. 每条记忆应该是独立的、简洁的陈述句
-4. 如果没有值得提取的信息，返回空数组
+4. 宁可多提取，也不要遗漏有价值的个人信息
+5. 如果没有值得提取的信息，返回空数组
 
 ## 输出格式
 返回 JSON 数组，每个元素：{"content": "...", "memory_type": "PREFERENCE|FACT|CONSTRAINT"}
@@ -63,7 +67,8 @@ async def extract_and_save_memories(
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         extracted = json.loads(raw)
-    except Exception:
+    except Exception as e:
+        logger.warning("记忆提取失败: %s | user_message=%s", e, user_message[:100])
         return []
 
     if not isinstance(extracted, list) or not extracted:

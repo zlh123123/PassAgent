@@ -23,9 +23,16 @@ export default function ChatLayout({
   const currentSessionId = match ? match[1] : null;
 
   const handleNewChat = useCallback(async () => {
+    // 如果当前已经在一个空白会话（title 仍为"新对话"）上，不再重复创建
+    if (currentSessionId) {
+      const current = sessions.find((s) => s.session_id === currentSessionId);
+      if (current && current.title === "新对话") {
+        return;
+      }
+    }
     const sessionId = await createSession();
     router.push(`/chat/${sessionId}`);
-  }, [createSession, router]);
+  }, [createSession, router, currentSessionId, sessions]);
 
   const handleSelectSession = useCallback(
     (sessionId: string) => {
