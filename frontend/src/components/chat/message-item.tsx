@@ -16,10 +16,10 @@ export function MessageItem({ message }: MessageItemProps) {
     <div className={cn("flex", isHuman ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[80%] rounded-2xl px-4 py-2.5",
+          "rounded-2xl px-4 py-2.5",
           isHuman
-            ? "bg-slate-900 text-white"
-            : "bg-transparent",
+            ? "max-w-[80%] bg-slate-900 text-white"
+            : "w-full bg-transparent",
         )}
       >
         {!isHuman && message.agent_steps && message.agent_steps.length > 0 && (
@@ -42,7 +42,7 @@ export function StreamingMessage({ content }: { content: string }) {
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-[80%] rounded-2xl px-4 py-2.5">
+      <div className="w-full rounded-2xl px-4 py-2.5">
         <div className="text-sm text-slate-800 dark:text-slate-200">
           <MarkdownText>{content}</MarkdownText>
         </div>

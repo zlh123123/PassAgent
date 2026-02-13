@@ -16,7 +16,7 @@ HOST="${VLLM_HOST:-0.0.0.0}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.9}"
 
 # 模型路径
-QWEN_PATH="${QWEN_PATH:-$MODEL_DIR/Qwen2_5_7b}"
+QWEN_PATH="${QWEN_PATH:-$MODEL_DIR/Qwen2.5-32B-Instruct-GPTQ-Int4}"
 QWEN_1_7B_PATH="${QWEN_1_7B_PATH:-$MODEL_DIR/PassRules}"
 
 # 端口
@@ -37,8 +37,8 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-# ---------- 启动 Qwen2.5-7B-Instruct（Agent 主力模型） ----------
-echo "启动 Qwen2.5-7B-Instruct -> $HOST:$QWEN_PORT"
+# ---------- 启动 Qwen2.5-32B-Instruct-GPTQ-Int4（Agent 主力模型） ----------
+echo "启动 Qwen2.5-32B-Instruct-GPTQ-Int4 -> $HOST:$QWEN_PORT"
 python -m vllm.entrypoints.openai.api_server \
     --model "$QWEN_PATH" \
     --host "$HOST" \
@@ -49,7 +49,8 @@ python -m vllm.entrypoints.openai.api_server \
     --max-model-len 8192 \
     --enable-auto-tool-choice \
     --tool-call-parser hermes \
-    --served-model-name "Qwen2.5-7B-Instruct" &
+    --enable-prefix-caching \
+    --served-model-name "Qwen2.5-32B-Instruct-GPTQ-Int4" &
 echo $! >> "$PID_FILE"
 
 # ---------- 启动 PassRules 微调模型 ----------
@@ -65,7 +66,7 @@ echo $! >> "$PID_FILE"
 
 echo ""
 echo "所有模型已启动，按 Ctrl+C 停止全部服务"
-echo "  Qwen2.5-7B-Instruct: http://$HOST:$QWEN_PORT/v1"
+echo "  Qwen2.5-32B-Instruct-GPTQ-Int4: http://$HOST:$QWEN_PORT/v1"
 
 # 等待任一进程退出
 wait -n
