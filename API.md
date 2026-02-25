@@ -1,5 +1,7 @@
 # PassAgent 系统设计文档
 
+https://qwen.readthedocs.io/en/latest/framework/function_call.html#vllm
+
 ## 一、系统架构
 
 ```
@@ -1578,6 +1580,7 @@ PassAgent/
 - 读到哪个 skill 就看到哪张表，不用翻来翻去
 - 正文简洁，完整的输入输出参数定义放附录 A 的 Function Schema 里
 ```
+
 
 
 
