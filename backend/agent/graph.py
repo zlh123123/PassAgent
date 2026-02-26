@@ -144,6 +144,7 @@ def build_graph() -> StateGraph:
 import agent.memory.retrieve_tool  # noqa: F401, E402
 import agent.tools.strength.keyboard_tool  # noqa: F401, E402
 import agent.tools.strength.zxcvbn_tool  # noqa: F401, E402
+import agent.tools.leak.hibp_password_tool  # noqa: F401, E402
 
 # 编译好的 graph 实例，供 runner 直接调用
 agent_graph = build_graph()
