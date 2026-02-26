@@ -3,6 +3,10 @@ from typing import Optional, List, Any
 
 
 # front -> back: 提交反馈
+class RenameSessionRequest(BaseModel):
+    title: str
+
+
 class FeedbackRequest(BaseModel):
     feedback_type: str
 

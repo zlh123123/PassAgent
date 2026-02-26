@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 
 export interface Session {
   session_id: string;
@@ -46,6 +46,13 @@ export function useSessions() {
     return res.session_id;
   }, []);
 
+  const renameSession = useCallback(async (sessionId: string, title: string) => {
+    await apiPut(`/api/sessions/${sessionId}/title`, { title });
+    setSessions((prev) =>
+      prev.map((s) => (s.session_id === sessionId ? { ...s, title } : s))
+    );
+  }, []);
+
   const deleteSession = useCallback(async (sessionId: string) => {
     await apiDelete(`/api/sessions/${sessionId}`);
     setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
@@ -60,6 +67,7 @@ export function useSessions() {
     loading,
     fetchSessions,
     createSession,
+    renameSession,
     deleteSession,
   };
 }

@@ -21,6 +21,8 @@ export default function SessionPage() {
     fetchMessages,
     sendMessage,
     stopStreaming,
+    toggleFeedback,
+    retryMessage,
   } = useChat(sessionId);
 
   useEffect(() => {
@@ -31,7 +33,12 @@ export default function SessionPage() {
     <>
       <MessageList>
         {messages.map((msg) => (
-          <MessageItem key={msg.message_id} message={msg} />
+          <MessageItem
+            key={msg.message_id}
+            message={msg}
+            onRetry={retryMessage}
+            onFeedback={toggleFeedback}
+          />
         ))}
 
         <QueueStatus position={queuePosition} />

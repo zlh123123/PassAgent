@@ -15,7 +15,7 @@ export default function ChatLayout({
   const pathname = usePathname();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const { sessions, loading, fetchSessions, createSession, deleteSession } =
+  const { sessions, loading, fetchSessions, createSession, renameSession, deleteSession } =
     useSessions();
 
   // Extract current session ID from URL
@@ -71,6 +71,7 @@ export default function ChatLayout({
         onNewChat={handleNewChat}
         onSelectSession={handleSelectSession}
         onDeleteSession={handleDeleteSession}
+        onRenameSession={renameSession}
         onSearch={(q) => fetchSessions(q)}
         onOpenSettings={() => setSettingsOpen(true)}
         loading={loading}

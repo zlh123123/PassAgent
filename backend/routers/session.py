@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session as DBSession
 from database.connection import get_db
 from database.models import User
 from utils.deps import get_current_user
-from schemas.session import SessionResponse, SessionsListResponse, MessagesListResponse
+from schemas.session import SessionResponse, SessionsListResponse, MessagesListResponse, RenameSessionRequest
 from services.session_service import (
     create_session,
     list_sessions,
     delete_session,
+    rename_session,
     get_messages,
 )
 
@@ -33,6 +34,19 @@ def list_all(
 ):
     sessions = list_sessions(db, user.user_id, search)
     return SessionsListResponse(sessions=sessions)
+
+
+@router.put("/{session_id}/title", response_model=SessionResponse)
+def rename(
+    session_id: str,
+    body: RenameSessionRequest,
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    result = rename_session(db, user.user_id, session_id, body.title)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
+    return SessionResponse(**result)
 
 
 @router.delete("/{session_id}")

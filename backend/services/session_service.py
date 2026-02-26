@@ -43,6 +43,26 @@ def list_sessions(db: DBSession, user_id: str, search: str | None = None) -> lis
     ]
 
 
+def rename_session(db: DBSession, user_id: str, session_id: str, title: str) -> dict | None:
+    session = (
+        db.query(Session)
+        .filter(Session.session_id == session_id, Session.user_id == user_id)
+        .first()
+    )
+    if not session:
+        return None
+    session.title = title
+    session.updated_at = datetime.now(timezone.utc).isoformat()
+    db.commit()
+    db.refresh(session)
+    return {
+        "session_id": session.session_id,
+        "title": session.title,
+        "created_at": session.created_at,
+        "updated_at": session.updated_at,
+    }
+
+
 def delete_session(db: DBSession, user_id: str, session_id: str) -> bool:
     session = (
         db.query(Session)

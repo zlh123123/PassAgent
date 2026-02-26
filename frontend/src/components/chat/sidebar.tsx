@@ -14,6 +14,8 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -29,6 +31,7 @@ interface SidebarProps {
   onNewChat: () => void;
   onSelectSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
+  onRenameSession: (sessionId: string, title: string) => void;
   onSearch: (query: string) => void;
   onOpenSettings: () => void;
   loading: boolean;
@@ -40,6 +43,7 @@ export function Sidebar({
   onNewChat,
   onSelectSession,
   onDeleteSession,
+  onRenameSession,
   onSearch,
   onOpenSettings,
   loading,
@@ -47,11 +51,31 @@ export function Sidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
   const { user } = useAuth();
 
   const handleSearch = (value: string) => {
     setSearchQuery(value);
     onSearch(value);
+  };
+
+  const startEditing = (sessionId: string, title: string) => {
+    setEditingId(sessionId);
+    setEditingTitle(title);
+  };
+
+  const commitEdit = () => {
+    if (editingId && editingTitle.trim()) {
+      onRenameSession(editingId, editingTitle.trim());
+    }
+    setEditingId(null);
+    setEditingTitle("");
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingTitle("");
   };
 
   return (
@@ -193,21 +217,75 @@ export function Sidebar({
                         ? "bg-slate-200 text-slate-900"
                         : "text-slate-600 hover:bg-slate-100",
                     )}
-                    onClick={() => onSelectSession(session.session_id)}
+                    onClick={() => {
+                      if (editingId !== session.session_id) {
+                        onSelectSession(session.session_id);
+                      }
+                    }}
                   >
                     <MessageSquare className="mr-2 h-4 w-4 shrink-0 text-slate-400" />
-                    <span className="flex-1 truncate">{session.title}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteSession(session.session_id);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3 text-slate-400" />
-                    </Button>
+                    {editingId === session.session_id ? (
+                      <input
+                        className="flex-1 min-w-0 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-1.5 py-0.5 text-sm outline-none focus:ring-1 focus:ring-slate-400"
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitEdit();
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                        onBlur={commitEdit}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span
+                        className="flex-1 truncate"
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          startEditing(session.session_id, session.title);
+                        }}
+                      >
+                        {session.title}
+                      </span>
+                    )}
+                    {editingId === session.session_id ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0 ml-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          commitEdit();
+                        }}
+                      >
+                        <Check className="h-3 w-3 text-slate-500" />
+                      </Button>
+                    ) : (
+                      <div className="flex shrink-0 opacity-0 group-hover:opacity-100">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startEditing(session.session_id, session.title);
+                          }}
+                        >
+                          <Pencil className="h-3 w-3 text-slate-400" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteSession(session.session_id);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 text-slate-400" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ),
               )}

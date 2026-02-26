@@ -12,6 +12,26 @@ from schemas.session import FeedbackRequest
 router = APIRouter(prefix="/api/messages", tags=["feedback"])
 
 
+@router.delete("/{message_id}")
+def delete_message(
+    message_id: str,
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    msg = (
+        db.query(Message)
+        .filter(Message.message_id == message_id, Message.user_id == user.user_id)
+        .first()
+    )
+    if not msg:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="消息不存在")
+    # Delete associated feedback first
+    db.query(Feedback).filter(Feedback.message_id == message_id).delete()
+    db.delete(msg)
+    db.commit()
+    return {"message": "已删除"}
+
+
 @router.post("/{message_id}/feedback")
 def toggle_feedback(
     message_id: str,

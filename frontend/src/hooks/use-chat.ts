@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { connectSSE } from "@/lib/sse";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
 export interface ChatMessage {
   message_id: string;
@@ -144,6 +144,57 @@ export function useChat(sessionId: string | null) {
     setIsLoading(false);
   }, []);
 
+  const toggleFeedback = useCallback(
+    async (messageId: string, feedbackType: "like" | "dislike") => {
+      try {
+        await apiPost(`/api/messages/${messageId}/feedback`, {
+          feedback_type: feedbackType,
+        });
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.message_id !== messageId) return m;
+            // Toggle: if same type, remove; otherwise set new type
+            const current = m.feedback?.feedback_type;
+            if (current === feedbackType) {
+              return { ...m, feedback: null };
+            }
+            return { ...m, feedback: { feedback_type: feedbackType } };
+          }),
+        );
+      } catch (err) {
+        console.error("Failed to toggle feedback:", err);
+      }
+    },
+    [],
+  );
+
+  const retryMessage = useCallback(
+    async (assistantMessageId: string) => {
+      if (!sessionId || isLoading) return;
+      // Find the user message right before this assistant message
+      const idx = messages.findIndex(
+        (m) => m.message_id === assistantMessageId,
+      );
+      if (idx <= 0) return;
+      const userMsg = messages[idx - 1];
+      if (userMsg.message_type !== "human") return;
+
+      // Delete the assistant message from backend
+      try {
+        await apiDelete(`/api/messages/${assistantMessageId}`);
+      } catch {
+        // ignore if already deleted
+      }
+      // Remove it from local state
+      setMessages((prev) =>
+        prev.filter((m) => m.message_id !== assistantMessageId),
+      );
+      // Resend the user message
+      sendMessage(userMsg.content);
+    },
+    [sessionId, isLoading, messages, sendMessage],
+  );
+
   return {
     messages,
     setMessages,
@@ -155,5 +206,7 @@ export function useChat(sessionId: string | null) {
     fetchMessages,
     sendMessage,
     stopStreaming,
+    toggleFeedback,
+    retryMessage,
   };
 }
