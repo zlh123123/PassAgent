@@ -7,8 +7,8 @@ https://qwen.readthedocs.io/en/latest/framework/function_call.html#vllm
 > + 工具调用鲁棒性：你的 HIBP API 是外部依赖，网络超时怎么办？加 retry + fallback + 参数校验。Planner 调错工具怎么办？加一个 tool_history 去重校验（你文档里写了"不重复调用"，但有没有实际测过？）。
 > + 记忆数量上限、记忆过期衰减机制、语义冲突阈值、记忆冲突怎么办？这些实际使用估计碰不上，但是论文和提问会被问到
 > + 测试benchmark：多轮对话测试的数据集要更多一些；此外，没有加入过度调用的测试
-> + 并发测试
-> 
+> + 并发测试（这个再看看吧）
+> + 口令生成和记忆恢复本质上是一个东西，但是安全性和可记忆性之间本身就存在矛盾
 
 ## 一、系统架构
 
@@ -100,6 +100,10 @@ https://qwen.readthedocs.io/en/latest/framework/function_call.html#vllm
 | source | TEXT | DEFAULT 'auto' | auto(Agent提取) / manual(用户自定义) |
 | embedding | BLOB | | 文本向量，用于语义检索，只有FACT需要embedding |
 | created_at | TEXT | DEFAULT CURRENT_TIMESTAMP | |
+| last_accessed_at | TEXT | DEFAULT CURRENT_TIMESTAMP | 最后访问时间，用于衰减和 LRU 淘汰 |
+| access_count | INTEGER | DEFAULT 0 | 访问次数，用于频率加权 |
+| is_stale | INTEGER | DEFAULT 0 | 0=有效, 1=待确认（超过90天未访问） |
+
 
 ### 2.7 tasks
 
@@ -549,7 +553,7 @@ Response:
        └───────┘
 ```
 
-最大循环次数：10。超过强制进入 Respond。
+最大循环次数：10。超过强制进入 Respond。（若调用口令推荐，10个的最大循环次数可能不够用，届时测试）
 
 ### 4.3 Planner 设计
 
@@ -566,6 +570,9 @@ Response:
 | 无关请求直接回复 | 与口令安全无关的问题不调工具 |
 | 恶意请求拒绝 | 涉及攻击、破解他人密码的请求直接拒绝 |
 | 文件感知 | uploaded_files 非空时，仅在生成和恢复场景下调用 multimodal_parse |
+| Prompt Injection 防护 | 输入清洗层在进入 Planner 前过滤恶意指令注入（如"忽略之前的指令"），防止攻击者通过对话操纵 Agent 行为 |
+| 输出审查 | Respond 节点生成回复后，经过输出过滤层，确保不泄露用户明文密码、不输出记忆系统中的敏感信息 |
+
 
 ### 4.4 工具清单
 
@@ -584,6 +591,8 @@ Response:
 | pinyin_check | 拼音组合检测 | password | has_pinyin, pinyin_words | pypinyin |
 | date_pattern_check | 日期模式检测 | password | has_date, date_formats_found | 正则 |
 | personal_info_check | 结合记忆检测个人信息 | password, memories | contains_personal_info, matched_items | 字符串匹配 |
+| entropy_calculate | 信息熵计算 | password | entropy_bits, charset_size | 纯 Python |
+
 
 #### 口令生成类
 
@@ -594,6 +603,38 @@ Response:
 | passphrase_generate | 助记短语型口令 | word_count, separator | passphrase, entropy | 词表 |
 | pronounceable_generate | 可发音随机口令 | length | password | 音节表 |
 | fetch_site_policy | 获取网站密码策略 | site_name | min_length, required_chars | 规则 JSON |
+
+口令生成的核心矛盾：安全性与可记忆性天然对立。安全性越高的密码（纯随机）越难记忆，越好记的密码（个人信息关联）越容易被攻击者猜到。
+
+本系统引入生成偏好档位，通过权重参数 α（安全性）和 β（可记忆性）控制生成策略：
+
+| 档位 | α | β | 生成策略 | 适用场景 |
+|------|---|---|----------|----------|
+| 🔒 最高安全 | 0.9 | 0.1 | 纯随机，不关联个人信息 | 密码管理器存储、一次性注册 |
+| 🔒 偏安全 | 0.7 | 0.3 | 少量记忆关联，高随机性 | 银行、金融类账号 |
+| ⚖️ 均衡（默认） | 0.5 | 0.5 | 适度记忆关联 + 随机元素 | 常用社交、邮箱账号 |
+| 🧠 偏好记 | 0.3 | 0.7 | 较多记忆关联，保证基本安全性 | 高频使用、需要手动输入的场景 |
+| 🧠 最好记 | 0.1 | 0.9 | 强记忆关联，安全性较低 | 低敏感度账号 |
+
+档位选择策略：
+- 用户显式指定：用户说"要最安全的" → 最高安全档；"要好记的" → 偏好记档，这种可以在设置中做成那种滑条
+- Agent 自动推断：根据 `fetch_site_policy` 返回的网站类型（银行 → 偏安全）或记忆中的 CONSTRAINT 自动选择
+- 默认：均衡档
+- 反正这块就是用户可以去开自动模式（就是agent去选择，agent会综合用户的需求、场景、记忆去选取合适的档位）；关闭自动模式后可以自己去选择具体的权重
+
+生成策略选择：α/β 参数控制生成工具的选择，而非对生成结果评分。
+
+| 档位 | 生成策略 | 实际调用工具 |
+|------|---------|-------------|
+| 🔒 最高安全 (α=0.9) | 纯随机 | `generate_password(mode=random, length=20+)` |
+| 🔒 偏安全 (α=0.7) | 随机为主，少量种子词 | `generate_password(mode=random)` |
+| ⚖️ 均衡 (α=0.5) | 多种风格各出一个，用户挑选 | `generate_password(seeds)` + `passphrase_generate` |
+| 🧠 偏好记 (β=0.7) | 种子词变换为主 | `generate_password(seeds, heavy)` + `passphrase_generate` |
+| 🧠 最好记 (β=0.9) | 助记短语/可发音 | `passphrase_generate` + `pronounceable_generate` |
+
+生成后安全性兜底：所有候选密码必须通过 `strength_verify`（score ≥ 2），未通过的自动淘汰，剩余候选交由用户选择。
+
+
 
 #### 记忆恢复类
 
@@ -612,6 +653,15 @@ Response:
 | hibp_email_check | 查邮箱关联泄露事件 | email | leaked, breaches | HIBP API |
 | breach_detail | 泄露事件详情 | breach_name | date, pwn_count, data_classes | HIBP API |
 | similar_leak_check | 常见变体批量查泄露 | password | variants_checked, any_leaked | 组合调用 |
+
+> 所有可使用的口令泄露相关的API：
+> + 密码泄露查询：curl -s https://api.pwnedpasswords.com/range/00000 | head -5
+> + 全部泄露事件列表：curl -s "https://haveibeenpwned.com/api/v3/breaches" -H "User-Agent: PassAgent/1.0" | head -200
+> + 单个泄露事件详情：curl -s "https://haveibeenpwned.com/api/v3/breach/LinkedIn" -H "User-Agent: PassAgent/1.0"
+> + 所有泄露数据类型：curl -s "https://haveibeenpwned.com/api/v3/dataclasses" -H "User-Agent: PassAgent/1.0"
+> + 邮箱查询（待验证）：curl -s "https://emailrep.io/test@example.com" -H "User-Agent: PassAgent/1.0"
+> + 邮箱查询（待验证）：curl -s "https://api.hunter.io/v2/email-verifier?email=test@example.com&api_key=YOUR_KEY"（需要注册拿 Key：https://hunter.io/api）
+
 
 #### 图形口令类
 
@@ -652,6 +702,12 @@ Respond 的 system prompt 中要求 LLM 在回复末尾自然地附带 2-3 个�
 3. 存入 user_memories 表（content + embedding）
 
 过滤规则：绝不存储明文密码和哈希，语义去重。
+
+安全性约束：
+- 记忆线索采用模糊化存储策略，仅记录语义类别（"家人相关"、"日期相关"）而非具体密码内容
+- 输出审查层：Respond 节点生成回复后，经过输出过滤，确保不会在回复中泄露用户明文密码
+- 即使用户在对话中提供了密码用于评估，Write Memory 也绝不将密码本身写入记忆
+
 
 ### 4.7 记忆检索策略（retrieve_memory）
 
@@ -751,7 +807,41 @@ Planner 组装参数调 generate_password：
 
 ### 4.9 记忆上限、冲突、遗忘
 
-TODO
+#### 4.9.1 记忆数量上限与淘汰
+
+每个用户最多存储 200 条记忆。超过上限时，按 LRU（Least Recently Used）策略淘汰 `last_accessed_at` 最早的记忆。
+
+PREFERENCE 和 CONSTRAINT 数量通常较少（< 20 条），全量加载无压力。FACT 通过语义检索 Top-K 访问，数量增长对检索性能影响可控。
+
+#### 4.9.2 记忆过期与衰减
+
+采用"硬过期 + 用户确认"策略（参考 Ebbinghaus 遗忘曲线思想的简化实现）：
+
+- 每次记忆被检索命中时，刷新 `last_accessed_at` 并 `access_count += 1`
+- 超过 90 天未被访问的记忆，标记为 `is_stale = 1`（待确认）
+- 下次相关查询触发时，Agent 主动询问用户："你之前提到过 XX，现在还是这样吗？"
+  - 用户确认 → 刷新时间戳，`is_stale = 0`
+  - 用户否认 → 删除或更新该记忆
+
+此策略工程成本低，且对口令助手场景合理——用户偏好和个人信息确实会随时间变化（换公司、改名等）。
+
+#### 4.9.3 记忆冲突检测与处理
+
+写入新记忆前，执行语义冲突检测：
+
+1. 对新记忆生成 embedding
+2. 在同类型（PREFERENCE/FACT/CONSTRAINT）的已有记忆中，计算余弦相似度
+3. 若最高相似度 > τ_conflict（阈值 0.85，此值后续可测试），判定为冲突
+4. 冲突处理策略：Last Write Wins——用新记忆替换旧记忆，同时更新 `created_at`
+
+就是存在三种情况吗，新记忆和旧记忆一样、新记忆和旧记忆冲突、新记忆和旧记忆没啥关系：
+
+| 阈值 | 用途 | 行为 |
+|------|------|------|
+| sim > 0.92 | 语义去重 | 跳过写入（视为重复） |
+| 0.85 < sim ≤ 0.92 | 冲突检测 | 替换旧记忆（视为更新） |
+| sim ≤ 0.85 | 正常写入 | 作为新记忆存入 |
+
 
 ---
 
@@ -812,7 +902,20 @@ SSE 连接（routers/chat.py）
 | 单任务超时 | 120 秒 | |
 | 用户取消 | 关闭 SSE 连接时，pending 状态的 task 移除 | |
 
-### 5.5 前端交互对应
+### 5.5 错误处理与容错策略
+
+| 异常场景 | 处理策略 | 降级行为 |
+|----------|----------|----------|
+| HIBP API 超时/不可用 | 重试 2 次（指数退避），超时阈值 10s | 跳过泄露检测，回复中注明"泄露检查暂时不可用" |
+| vLLM 模型服务不可用 | 重试 1 次，超时阈值 30s | 返回 task_failed 事件，提示用户稍后重试 |
+| Planner 返回不存在的工具名 | Router 校验工具名，不匹配则回退到 Planner 重新决策 | 消耗一次循环次数，最多重试 2 次后强制 respond |
+| 工具执行抛异常 | 捕获异常，将错误信息写入 tool_history | Planner 根据错误信息决定跳过该工具或换替代方案 |
+| SSE 连接断开 | 前端检测断开后自动重连，通过 task_id 恢复事件流 | 已推送的事件不重复推送，从断点继续 |
+| 单任务超时（120s） | Worker 强制终止当前任务 | 返回 task_failed，已完成的工具结果仍可用于部分回复 |
+| Planner 死循环（重复调用相同工具+相同参数） | tool_history 检测到相同参数的重复调用，强制跳过 | 消耗一次循环次数，Planner 重新决策 |
+
+
+### 5.6 前端交互对应
 
 | SSE 事件 | 前端行为 |
 |----------|----------|
