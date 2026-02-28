@@ -21,7 +21,7 @@ def register_user(
     1. 校验验证码
     2. 检查邮箱是否已注册
     3. 创建用户并签发 JWT
-    返回 {"user_id": ..., "token": ...} 或抛出 ValueError。
+    返回 {"user_id": ..., "token": ..., ...} 或抛出 ValueError。
     """
     # 验证码校验
     if not verify_code(email, code):
@@ -39,14 +39,23 @@ def register_user(
         email=email,
         password_hash=hash_password(password),
         nickname=nickname,
-        theme="light",
+        theme="system",
         created_at=now,
     )
     db.add(user)
     db.commit()
 
     token = create_token(user_id)
-    return {"user_id": user_id, "token": token}
+    return {
+        "user_id": user_id,
+        "token": token,
+        "nickname": nickname,
+        "theme": "system",
+        "font_size": "M",
+        "bubble_style": "rounded",
+        "gen_auto_mode": 1,
+        "gen_security_weight": "0.5",
+    }
 
 
 def login_user(db: DBSession, email: str, password: str) -> dict:
@@ -66,5 +75,9 @@ def login_user(db: DBSession, email: str, password: str) -> dict:
         "user_id": user.user_id,
         "token": token,
         "nickname": user.nickname,
-        "theme": user.theme or "light",
+        "theme": user.theme or "system",
+        "font_size": user.font_size or "M",
+        "bubble_style": user.bubble_style or "rounded",
+        "gen_auto_mode": user.gen_auto_mode if user.gen_auto_mode is not None else 1,
+        "gen_security_weight": user.gen_security_weight or "0.5",
     }

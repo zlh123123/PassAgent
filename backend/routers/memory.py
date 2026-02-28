@@ -74,6 +74,16 @@ async def create_memory(
     return CreateMemoryResponse(memory_id=memory_id, message="记忆已添加")
 
 
+@router.delete("")
+def delete_all_memories(
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    db.query(UserMemory).filter(UserMemory.user_id == user.user_id).delete()
+    db.commit()
+    return {"message": "已清除全部记忆"}
+
+
 @router.delete("/{memory_id}")
 def delete_memory(
     memory_id: str,

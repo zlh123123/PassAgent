@@ -8,6 +8,12 @@ export interface SendCodeResponse {
 export interface RegisterResponse {
   user_id: string;
   token: string;
+  nickname: string | null;
+  theme: string;
+  font_size: string;
+  bubble_style: string;
+  gen_auto_mode: number;
+  gen_security_weight: string;
 }
 
 export interface LoginResponse {
@@ -15,6 +21,10 @@ export interface LoginResponse {
   token: string;
   nickname: string | null;
   theme: string;
+  font_size: string;
+  bubble_style: string;
+  gen_auto_mode: number;
+  gen_security_weight: string;
 }
 
 async function request<T>(

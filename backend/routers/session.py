@@ -49,6 +49,17 @@ def rename(
     return SessionResponse(**result)
 
 
+@router.delete("")
+def delete_all_sessions(
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    from database.models import Session as SessionModel
+    db.query(SessionModel).filter(SessionModel.user_id == user.user_id).delete()
+    db.commit()
+    return {"message": "已清除全部会话"}
+
+
 @router.delete("/{session_id}")
 def delete(
     session_id: str,

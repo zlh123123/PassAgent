@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { type ChatMessage } from "@/hooks/use-chat";
+import { useAuth } from "@/providers/Auth";
 import { AgentSteps } from "./agent-steps";
 import { MarkdownText } from "./markdown-text";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,30 @@ import {
   Download,
 } from "lucide-react";
 
+const fontSizeMap: Record<string, string> = {
+  S: "13px",
+  M: "15px",
+  L: "17px",
+  XL: "19px",
+};
+
+function getBubbleClasses(style: string, isHuman: boolean) {
+  if (style === "minimal") {
+    return isHuman
+      ? "max-w-[80%] border-b border-slate-300 dark:border-slate-700 px-4 py-2.5 text-slate-900 dark:text-slate-100"
+      : "w-full px-4 py-2.5";
+  }
+  if (style === "square") {
+    return isHuman
+      ? "max-w-[80%] rounded-[6px] bg-slate-900 text-white px-4 py-2.5"
+      : "w-full bg-transparent px-4 py-2.5";
+  }
+  // rounded (default)
+  return isHuman
+    ? "max-w-[80%] rounded-2xl bg-slate-900 text-white px-4 py-2.5"
+    : "w-full bg-transparent rounded-2xl px-4 py-2.5";
+}
+
 interface MessageItemProps {
   message: ChatMessage;
   onRetry?: (messageId: string) => void;
@@ -22,8 +47,12 @@ interface MessageItemProps {
 }
 
 export function MessageItem({ message, onRetry, onFeedback }: MessageItemProps) {
+  const { user } = useAuth();
   const isHuman = message.message_type === "human";
   const [copied, setCopied] = useState(false);
+
+  const fontSize = fontSizeMap[user?.font_size || "M"] || "15px";
+  const bubbleStyle = user?.bubble_style || "rounded";
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content).then(() => {
@@ -44,21 +73,14 @@ export function MessageItem({ message, onRetry, onFeedback }: MessageItemProps) 
 
   return (
     <div className={cn("group/msg flex", isHuman ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "rounded-2xl px-4 py-2.5",
-          isHuman
-            ? "max-w-[80%] bg-slate-900 text-white"
-            : "w-full bg-transparent",
-        )}
-      >
+      <div className={cn(getBubbleClasses(bubbleStyle, isHuman))}>
         {!isHuman && message.agent_steps && message.agent_steps.length > 0 && (
           <AgentSteps steps={message.agent_steps} isStreaming={false} />
         )}
         {isHuman ? (
-          <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+          <p className="whitespace-pre-wrap" style={{ fontSize }}>{message.content}</p>
         ) : (
-          <div className="text-sm text-slate-800 dark:text-slate-200">
+          <div className="text-slate-800 dark:text-slate-200" style={{ fontSize }}>
             <MarkdownText>{message.content}</MarkdownText>
           </div>
         )}
@@ -125,12 +147,15 @@ export function MessageItem({ message, onRetry, onFeedback }: MessageItemProps) 
 }
 
 export function StreamingMessage({ content }: { content: string }) {
+  const { user } = useAuth();
   if (!content) return null;
+
+  const fontSize = fontSizeMap[user?.font_size || "M"] || "15px";
 
   return (
     <div className="flex justify-start">
       <div className="w-full rounded-2xl px-4 py-2.5">
-        <div className="text-sm text-slate-800 dark:text-slate-200">
+        <div className="text-slate-800 dark:text-slate-200" style={{ fontSize }}>
           <MarkdownText>{content}</MarkdownText>
         </div>
       </div>

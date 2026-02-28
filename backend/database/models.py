@@ -13,7 +13,11 @@ class User(Base):
     email = Column(Text, unique=True, nullable=False)
     password_hash = Column(Text, nullable=False)
     nickname = Column(Text)
-    theme = Column(Text, default="light")
+    theme = Column(Text, default="system")
+    font_size = Column(Text, default="M")
+    bubble_style = Column(Text, default="rounded")
+    gen_auto_mode = Column(Integer, default=1)
+    gen_security_weight = Column(Text, default="0.5")
     created_at = Column(Text, server_default="CURRENT_TIMESTAMP")
 
     # 关系

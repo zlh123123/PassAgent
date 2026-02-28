@@ -65,8 +65,13 @@ export default function RegisterPage() {
       const res = await register(email, code, password, nickname || undefined);
       setAuth(res.token, {
         user_id: res.user_id,
-        nickname: nickname || null,
-        theme: "light",
+        email,
+        nickname: res.nickname ?? (nickname || null),
+        theme: res.theme ?? "system",
+        font_size: res.font_size ?? "M",
+        bubble_style: res.bubble_style ?? "rounded",
+        gen_auto_mode: res.gen_auto_mode ?? 1,
+        gen_security_weight: res.gen_security_weight ?? "0.5",
       });
       router.push("/chat");
     } catch (err) {

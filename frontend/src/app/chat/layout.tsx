@@ -3,7 +3,7 @@
 import { useCallback, useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/chat/sidebar";
-import { SettingsPanel } from "@/components/chat/settings-panel";
+import { SettingsDialog } from "@/components/chat/settings-dialog";
 import { useSessions } from "@/hooks/use-sessions";
 
 export default function ChatLayout({
@@ -77,7 +77,7 @@ export default function ChatLayout({
         loading={loading}
       />
       <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
-      <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }

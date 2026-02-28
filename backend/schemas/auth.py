@@ -25,6 +25,12 @@ class RegisterRequest(BaseModel):
 class RegisterResponse(BaseModel):
     user_id: str
     token: str
+    nickname: Optional[str] = None
+    theme: str = "system"
+    font_size: str = "M"
+    bubble_style: str = "rounded"
+    gen_auto_mode: int = 1
+    gen_security_weight: str = "0.5"
 
 
 # front -> back: 登录
@@ -38,4 +44,8 @@ class LoginResponse(BaseModel):
     user_id: str
     token: str
     nickname: Optional[str] = None
-    theme: str = "light"
+    theme: str = "system"
+    font_size: str = "M"
+    bubble_style: str = "rounded"
+    gen_auto_mode: int = 1
+    gen_security_weight: str = "0.5"

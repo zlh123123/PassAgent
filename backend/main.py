@@ -7,7 +7,7 @@ import uvicorn
 import os
 
 from database.init_db import init_database
-from routers import auth, user, session, chat, upload, feedback, memory
+from routers import auth, user, session, chat, upload, feedback, memory, export
 from worker.runner import worker_loop
 
 
@@ -49,6 +49,7 @@ app.include_router(chat.router)
 app.include_router(upload.router)
 app.include_router(feedback.router)
 app.include_router(memory.router)
+app.include_router(export.router)
 
 
 @app.get("/")

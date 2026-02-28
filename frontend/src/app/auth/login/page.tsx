@@ -26,8 +26,13 @@ export default function LoginPage() {
       const res = await login(email, password);
       setAuth(res.token, {
         user_id: res.user_id,
+        email,
         nickname: res.nickname,
         theme: res.theme,
+        font_size: res.font_size,
+        bubble_style: res.bubble_style,
+        gen_auto_mode: res.gen_auto_mode,
+        gen_security_weight: res.gen_security_weight,
       });
       router.push("/chat");
     } catch (err) {
