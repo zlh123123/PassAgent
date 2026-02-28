@@ -10,22 +10,25 @@ https://qwen.readthedocs.io/en/latest/framework/function_call.html#vllm
 > + 并发测试（这个再看看吧）
 > + 口令生成和记忆恢复本质上是一个东西，但是安全性和可记忆性之间本身就存在矛盾
 
+---
+
 ## 一、系统架构
 
 ```
 ┌──────────────┐     ┌──────────────────────┐     ┌─────────────────────┐
 │   Frontend   │────▶│   Backend + Agent        │────▶│   Model Service     │
 │   (Next.js)  │ SSE │   (FastAPI + LangGraph)  │HTTP │   (vLLM)            │
-│   Port 3000  │◀────│   Port 8000              │◀────│   Port 8080         │
+│   Port 3000  │◀────│   Port 8000              │◀────│   Port 6006         │
 └──────────────┘     └──────────┬───────────────┘     └─────────────────────┘
                                 │                       GPU Container
-                                ▼                       - Qwen2.5-7B (4bit) 常驻
+                                ▼                       - Qwen2.5-32B-Instruct-GPTQ-Int4 常驻
                      ┌──────────────────┐               - Qwen-1.7B 微调 (4bit) 常驻
-                     │   SQLite         │               - Qwen-Omni-7B (4bit) 按需
+                     │   SQLite         │               
                      │   passagent.db   │
                      └──────────────────┘
 
 ```
+
 ---
 
 ## 二、数据库设计（SQLite）
@@ -38,7 +41,11 @@ https://qwen.readthedocs.io/en/latest/framework/function_call.html#vllm
 | email | TEXT | UNIQUE, NOT NULL | 注册邮箱 |
 | password_hash | TEXT | NOT NULL | bcrypt |
 | nickname | TEXT | | |
-| theme | TEXT | DEFAULT 'light' | light / dark |
+| theme | TEXT | DEFAULT 'system' | light / dark / system（跟随系统） |
+| font_size | TEXT | DEFAULT 'M' | 字体大小（S / M / L / XL） |
+| bubble_style | TEXT | DEFAULT 'rounded' | 气泡样式（rounded / square / minimal） |
+| gen_auto_mode | INTEGER | DEFAULT 1 | 生成自动模式（0/1，SQLite 无 BOOLEAN） |
+| gen_security_weight | REAL | DEFAULT 0.5 | 安全性权重 α（0.1/0.3/0.5/0.7/0.9） |
 | created_at | TEXT | DEFAULT CURRENT_TIMESTAMP | ISO 8601 |
 
 ### 2.2 sessions
@@ -104,7 +111,6 @@ https://qwen.readthedocs.io/en/latest/framework/function_call.html#vllm
 | access_count | INTEGER | DEFAULT 0 | 访问次数，用于频率加权 |
 | is_stale | INTEGER | DEFAULT 0 | 0=有效, 1=待确认（超过90天未访问） |
 
-
 ### 2.7 tasks
 
 | 字段 | 类型 | 约束 | 说明 |
@@ -126,19 +132,42 @@ https://qwen.readthedocs.io/en/latest/framework/function_call.html#vllm
 
 所有接口（除 auth 外）需要 Header: `Authorization: Bearer <jwt_token>`
 
+### 3.0 基础
+
+#### GET /
+
+Response:
+```json
+{
+    "message": "PassAgent API",
+    "version": "1.0.0"
+}
+```
+
+#### GET /health
+
+Response:
+```json
+{
+    "status": "healthy"
+}
+```
+
 ### 3.1 认证
 
 #### POST /api/auth/send-code
 
+发送邮箱验证码。
+
 Request:
-```
+```json
 {
     "email": "user@sjtu.edu.cn"
 }
 ```
 
 Response:
-```
+```json
 {
     "message": "验证码已发送",
     "expires_in": 300
@@ -147,8 +176,10 @@ Response:
 
 #### POST /api/auth/register
 
+注册新用户。
+
 Request:
-```
+```json
 {
     "email": "user@sjtu.edu.cn",
     "code": "123456",
@@ -158,17 +189,25 @@ Request:
 ```
 
 Response:
-```
+```json
 {
     "user_id": "uuid",
-    "token": "jwt_token"
+    "token": "jwt_token",
+    "nickname": "张三",
+    "theme": "system",
+    "font_size": "M",
+    "bubble_style": "rounded",
+    "gen_auto_mode": true,
+    "gen_security_weight": 0.5
 }
 ```
 
 #### POST /api/auth/login
 
+登录。
+
 Request:
-```
+```json
 {
     "email": "user@sjtu.edu.cn",
     "password": "xxxxxxxx"
@@ -176,12 +215,16 @@ Request:
 ```
 
 Response:
-```
+```json
 {
     "user_id": "uuid",
     "token": "jwt_token",
     "nickname": "张三",
-    "theme": "light"
+    "theme": "system",
+    "font_size": "M",
+    "bubble_style": "rounded",
+    "gen_auto_mode": true,
+    "gen_security_weight": 0.5
 }
 ```
 
@@ -189,44 +232,99 @@ Response:
 
 #### GET /api/user/profile
 
+获取用户资料。
+
 Response:
-```
+```json
 {
     "user_id": "uuid",
     "email": "user@sjtu.edu.cn",
     "nickname": "张三",
-    "theme": "light"
+    "theme": "system",
+    "font_size": "M",
+    "bubble_style": "rounded",
+    "gen_auto_mode": true,
+    "gen_security_weight": 0.5
 }
 ```
 
 #### PUT /api/user/profile
 
+更新用户资料（所有字段均为可选，传哪个更新哪个）。
+
 Request:
-```
+```json
 {
     "nickname": "新昵称",
-    "theme": "dark"
+    "theme": "dark",
+    "font_size": "L",
+    "bubble_style": "rounded",
+    "gen_auto_mode": false,
+    "gen_security_weight": 0.7
 }
+```
 
-```
+> `theme` 可选值：`light` / `dark` / `system`（跟随系统）。
+
 Response:
-```
+```json
 {
     "message": "更新成功"
 }
 ```
 
+#### PUT /api/user/password
+
+修改密码。
+
+Request:
+```json
+{
+    "old_password": "当前密码",
+    "new_password": "新密码"
+}
+```
+
+Response:
+```json
+{
+    "message": "密码修改成功"
+}
+```
+
+#### DELETE /api/user/account
+
+删除账户（需密码二次确认）。
+
+Request:
+```json
+{
+    "password": "当前密码"
+}
+```
+
+Response:
+```json
+{
+    "message": "账户已删除"
+}
+```
+
+> 后端逻辑：校验密码 → 级联删除用户所有数据（sessions、messages、memories、feedback、tasks、uploaded_files 记录 + uploads/ 目录下的物理文件）→ 删除用户记录 → 前端清除 token 跳转登录页。
+
 ### 3.3 会话
 
 #### POST /api/sessions
 
+创建新会话。
+
 Request:
-```
+```json
 {}
 ```
 
 Response:
-```
+```json
 {
     "session_id": "uuid",
     "title": "新对话",
@@ -236,10 +334,12 @@ Response:
 
 #### GET /api/sessions
 
+获取会话列表。
+
 Query params: `?search=关键词`（可选，模糊搜索标题）
 
 Response:
-```
+```json
 {
     "sessions": [
         {
@@ -250,21 +350,58 @@ Response:
         }
     ]
 }
-
 ```
-#### DELETE /api/sessions/{session_id}
+
+#### PUT /api/sessions/{session_id}/title
+
+重命名会话标题。
+
+Request:
+```json
+{
+    "title": "新标题"
+}
+```
 
 Response:
+```json
+{
+    "session_id": "uuid",
+    "title": "新标题",
+    "created_at": "2026-02-11T10:00:00Z",
+    "updated_at": "2026-02-11T10:06:00Z"
+}
 ```
+
+#### DELETE /api/sessions/{session_id}
+
+删除单个会话（级联删除会话下的消息、反馈、任务等）。
+
+Response:
+```json
 {
     "message": "已删除"
 }
 ```
 
-#### GET /api/sessions/{session_id}/messages
+#### DELETE /api/sessions
+
+清除当前用户的所有会话。
 
 Response:
+```json
+{
+    "message": "已清除 N 个会话",
+    "deleted_count": 5
+}
 ```
+
+#### GET /api/sessions/{session_id}/messages
+
+获取指定会话的消息列表。
+
+Response:
+```json
 {
     "messages": [
         {
@@ -291,14 +428,27 @@ Response:
 }
 ```
 
-### 3.4 对话（核心，SSE）
+### 3.4 消息
+
+#### DELETE /api/messages/{message_id}
+
+删除单条消息（同时级联删除关联的反馈）。
+
+Response:
+```json
+{
+    "message": "已删除"
+}
+```
+
+### 3.5 对话（核心，SSE）
 
 #### POST /api/chat/{session_id}
 
 这是整个系统唯一的 SSE 接口。
 
 Request:
-```
+```json
 {
     "message": "帮我看看 zly2023! 安全吗",
     "file_ids": []
@@ -367,11 +517,11 @@ event: done
 data: {}
 ```
 
-### 3.5 文件
+### 3.6 文件
 
 #### POST /api/upload
 
-仅接受图片和音频文件，用于口令生成和记忆恢复场景的多模态输入。
+上传文件。仅接受图片和音频文件，用于口令生成和记忆恢复场景的多模态输入。
 
 Request: multipart/form-data
 
@@ -380,8 +530,10 @@ Request: multipart/form-data
 | file | File | 图片(png/jpeg/webp)或音频(wav/mp3/flac) |
 | session_id | string | 可选 |
 
+文件大小限制：10MB。
+
 Response:
-```
+```json
 {
     "file_id": "uuid",
     "filename": "cat.jpg",
@@ -391,16 +543,18 @@ Response:
 ```
 
 错误响应（不支持的文件类型）：
-```
+```json
 {
-    "error": "仅支持图片(png/jpeg/webp)和音频(wav/mp3/flac)文件"
+    "detail": "仅支持图片(png/jpeg/webp)和音频(wav/mp3/flac)文件"
 }
 ```
 
 #### GET /api/files
 
+获取当前用户的文件列表。
+
 Response:
-```
+```json
 {
     "files": [
         {
@@ -417,39 +571,50 @@ Response:
 
 #### DELETE /api/files/{file_id}
 
+删除文件。
+
 Response:
-```
+```json
 {
     "message": "已删除"
 }
 ```
 
-### 3.6 反馈
+### 3.7 反馈
 
 #### POST /api/messages/{message_id}/feedback
 
+提交消息反馈。再次发送相同 feedback_type 则取消反馈（删除记录），发送不同 feedback_type 则更新。
+
 Request:
-```
+```json
 {
     "feedback_type": "like"
 }
 ```
 
-Response:
-```
+Response（新增或更新）:
+```json
 {
     "message": "反馈已记录"
 }
 ```
 
-再次发送相同 feedback_type 则取消反馈（删除记录）。
+Response（取消）:
+```json
+{
+    "message": "反馈已取消"
+}
+```
 
-### 3.7 记忆
+### 3.8 记忆
 
 #### GET /api/memories
 
+获取当前用户的所有记忆。
+
 Response:
-```
+```json
 {
     "memories": [
         {
@@ -465,8 +630,10 @@ Response:
 
 #### POST /api/memories
 
+手动添加记忆。`memory_type` 必须是 `PREFERENCE` / `FACT` / `CONSTRAINT` 之一。
+
 Request:
-```
+```json
 {
     "content": "我的猫叫旺财",
     "memory_type": "FACT"
@@ -474,7 +641,7 @@ Request:
 ```
 
 Response:
-```
+```json
 {
     "memory_id": "uuid",
     "message": "记忆已添加"
@@ -483,13 +650,142 @@ Response:
 
 #### DELETE /api/memories/{memory_id}
 
+删除单条记忆。
+
 Response:
-```
+```json
 {
     "message": "已删除"
 }
 ```
 
+#### DELETE /api/memories
+
+清除当前用户的所有记忆。
+
+Response:
+```json
+{
+    "message": "已清除 N 条记忆",
+    "deleted_count": 12
+}
+```
+
+### 3.9 数据导出
+
+#### GET /api/export/conversations
+
+导出对话记录。支持通过查询参数筛选导出范围。
+
+Query Parameters:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| session_id | string | 否 | 仅导出指定单个会话 |
+| format | string | 否 | 导出格式：`json`（默认）/ `csv` / `md` |
+
+> 不传 `session_id` 时导出所有对话。
+
+Response: JSON 文件下载
+```json
+{
+    "exported_at": "2026-02-28T12:00:00Z",
+    "user_id": "uuid",
+    "sessions": [
+        {
+            "session_id": "uuid",
+            "title": "帮我生成一个安全密码",
+            "created_at": "...",
+            "messages": [
+                { "message_type": "human", "content": "...", "created_at": "..." },
+                { "message_type": "assistant", "content": "...", "created_at": "..." }
+            ]
+        }
+    ]
+}
+```
+
+#### GET /api/export/memories
+
+导出当前用户的所有记忆条目。
+
+Query Parameters:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| format | string | 否 | 导出格式：`json`（默认）/ `csv` / `md` |
+
+Response（JSON 格式）:
+```json
+{
+    "exported_at": "2026-02-28T12:00:00Z",
+    "user_id": "uuid",
+    "memories": [
+        {
+            "memory_id": "uuid",
+            "content": "我的猫叫旺财",
+            "memory_type": "FACT",
+            "source": "agent",
+            "created_at": "..."
+        }
+    ]
+}
+```
+
+#### GET /api/export/settings
+
+导出当前用户的个性化设置。
+
+Query Parameters:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| format | string | 否 | 导出格式：`json`（默认）/ `md`（不支持 CSV） |
+
+Response（JSON 格式）:
+```json
+{
+    "exported_at": "2026-02-28T12:00:00Z",
+    "user_id": "uuid",
+    "settings": {
+        "theme": "dark",
+        "font_size": "M",
+        "bubble_style": "rounded",
+        "gen_auto_mode": 1,
+        "gen_security_weight": 0.5
+    }
+}
+```
+
+### 3.10 API 汇总
+
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| GET | / | 根路由 | 否 |
+| GET | /health | 健康检查 | 否 |
+| POST | /api/auth/send-code | 发送验证码 | 否 |
+| POST | /api/auth/register | 注册 | 否 |
+| POST | /api/auth/login | 登录 | 否 |
+| GET | /api/user/profile | 获取用户资料 | 是 |
+| PUT | /api/user/profile | 更新用户资料 | 是 |
+| PUT | /api/user/password | 修改密码 | 是 |
+| DELETE | /api/user/account | 删除账户 | 是 |
+| POST | /api/sessions | 创建会话 | 是 |
+| GET | /api/sessions | 获取会话列表 | 是 |
+| PUT | /api/sessions/{session_id}/title | 重命名会话 | 是 |
+| DELETE | /api/sessions/{session_id} | 删除单个会话 | 是 |
+| DELETE | /api/sessions | 清除所有会话 | 是 |
+| GET | /api/sessions/{session_id}/messages | 获取消息列表 | 是 |
+| DELETE | /api/messages/{message_id} | 删除单条消息 | 是 |
+| POST | /api/chat/{session_id} | 对话（SSE） | 是 |
+| POST | /api/upload | 上传文件 | 是 |
+| GET | /api/files | 获取文件列表 | 是 |
+| DELETE | /api/files/{file_id} | 删除文件 | 是 |
+| POST | /api/messages/{message_id}/feedback | 提交/切换/取消反馈 | 是 |
+| GET | /api/memories | 获取记忆列表 | 是 |
+| POST | /api/memories | 添加记忆 | 是 |
+| DELETE | /api/memories/{memory_id} | 删除单条记忆 | 是 |
+| DELETE | /api/memories | 清除所有记忆 | 是 |
+| GET | /api/export/conversations | 导出对话记录（支持筛选会话） | 是 |
+| GET | /api/export/memories | 导出用户记忆 | 是 |
+| GET | /api/export/settings | 导出用户设置 | 是 |
 
 ---
 
@@ -499,14 +795,18 @@ Response:
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| messages | list[Message] | 对话历史，自动追加 |
+| messages | list[Message] | 对话历史，自动追加（继承自 LangGraph MessagesState） |
 | user_id | str | 当前用户 |
 | session_id | str | 当前会话 |
 | memories | list[dict] | 本轮检索到的用户记忆 |
-| tool_history | list[dict] | 本轮已调用的工具及结果 |
+| tool_history | list[ToolResult] | 本轮已调用的工具及结果（append-only） |
 | next_action | str / None | planner 决定的下一步 |
 | action_params | dict | 传给工具的参数 |
 | uploaded_files | list[dict] | 本轮上传的文件信息 |
+| loop_count | int | 当前循环次数，用于防止死循环 |
+| gen_auto_mode | bool | 用户生成偏好：是否自动模式（从 DB 读入） |
+| gen_security_weight | float | 用户生成偏好：安全性权重 α（从 DB 读入） |
+| _event_queue | Any | 运行时注入的 asyncio.Queue，用于向 SSE 推送事件 |
 
 ### 4.2 状态图
 
@@ -573,10 +873,9 @@ Response:
 | Prompt Injection 防护 | 输入清洗层在进入 Planner 前过滤恶意指令注入（如"忽略之前的指令"），防止攻击者通过对话操纵 Agent 行为 |
 | 输出审查 | Respond 节点生成回复后，经过输出过滤层，确保不泄露用户明文密码、不输出记忆系统中的敏感信息 |
 
-
 ### 4.4 工具清单
 
-#### 强度评估类
+#### 4.4.1 强度评估类
 
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
@@ -593,8 +892,7 @@ Response:
 | personal_info_check | 结合记忆检测个人信息 | password, memories | contains_personal_info, matched_items | 字符串匹配 |
 | entropy_calculate | 信息熵计算 | password | entropy_bits, charset_size | 纯 Python |
 
-
-#### 口令生成类
+#### 4.4.2 口令生成类
 
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
@@ -603,6 +901,7 @@ Response:
 | passphrase_generate | 助记短语型口令 | word_count, separator | passphrase, entropy | 词表 |
 | pronounceable_generate | 可发音随机口令 | length | password | 音节表 |
 | fetch_site_policy | 获取网站密码策略 | site_name | min_length, required_chars | 规则 JSON |
+| strength_verify | 生成口令反向验证强度 | password | score, passed | zxcvbn + 阈值判断 |
 
 口令生成的核心矛盾：安全性与可记忆性天然对立。安全性越高的密码（纯随机）越难记忆，越好记的密码（个人信息关联）越容易被攻击者猜到。
 
@@ -634,9 +933,7 @@ Response:
 
 生成后安全性兜底：所有候选密码必须通过 `strength_verify`（score ≥ 2），未通过的自动淘汰，剩余候选交由用户选择。
 
-
-
-#### 记忆恢复类
+#### 4.4.3 记忆恢复类
 
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
@@ -645,7 +942,7 @@ Response:
 | rule_generate | hashcat 规则生成 | source, target_hint | rules | 微调模型(GPU) |
 | date_expand | 日期格式扩展 | year | variants | 纯 Python |
 
-#### 泄露检查类
+#### 4.4.4 泄露检查类
 
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
@@ -662,15 +959,13 @@ Response:
 > + 邮箱查询（待验证）：curl -s "https://emailrep.io/test@example.com" -H "User-Agent: PassAgent/1.0"
 > + 邮箱查询（待验证）：curl -s "https://api.hunter.io/v2/email-verifier?email=test@example.com&api_key=YOUR_KEY"（需要注册拿 Key：https://hunter.io/api）
 
-
-#### 图形口令类
+#### 4.4.5 图形口令类
 
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
 | graphical_mode | 唤起前端图形口令组件 | mode(image/map) | config | 返回 JSON |
 
-
-#### 通用
+#### 4.4.6 通用
 
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
@@ -692,7 +987,7 @@ Respond 的 system prompt 中要求 LLM 在回复末尾自然地附带 2-3 个�
 |------|----------|
 | 口令生成 | 是，提取偏好和事实 |
 | 记忆恢复 | 是，提取片段来源 |
-| 强度评估 | 否 |
+| 强度评估 | 有条件——不写入密码本身，但若用户在对话中透露了个人信息（如"这是用我女儿名字做的"），提取该事实写入 |
 | 泄露检查 | 否 |
 | 图形口令 | 否 |
 
@@ -707,7 +1002,6 @@ Respond 的 system prompt 中要求 LLM 在回复末尾自然地附带 2-3 个�
 - 记忆线索采用模糊化存储策略，仅记录语义类别（"家人相关"、"日期相关"）而非具体密码内容
 - 输出审查层：Respond 节点生成回复后，经过输出过滤，确保不会在回复中泄露用户明文密码
 - 即使用户在对话中提供了密码用于评估，Write Memory 也绝不将密码本身写入记忆
-
 
 ### 4.7 记忆检索策略（retrieve_memory）
 
@@ -740,7 +1034,7 @@ Respond 的 system prompt 中要求 LLM 在回复末尾自然地附带 2-3 个�
 记忆4: "女儿生日是 2020-06-15"     → 相似度 0.78 ✓
 ```
 
-embedding 模型选择：使用轻量级的 text2vec-base-chinese（~400MB，CPU 运行），不占 GPU 显存。写入记忆时生成 embedding 存入 BLOB 字段，检索时在 Python 层做余弦相似度计算（记忆量小，不需要向量数据库）。
+embedding 模型选择：使用 SiliconFlow 云端 Embedding API（`api.siliconflow.cn/v1`）。写入记忆时生成 embedding 存入 BLOB 字段，检索时在 Python 层做余弦相似度计算（记忆量小，不需要向量数据库）。
 
 论文中可做的对比实验：
 - 全量检索 vs 语义检索：在口令生成场景下，对比两种策略的记忆命中率和生成口令的个性化程度
@@ -760,8 +1054,6 @@ embedding 模型选择：使用轻量级的 text2vec-base-chinese（~400MB，CPU
 | 偏好中英文混合的密码风格 | 用户多次生成时都要求中英混合 |
 | 喜欢用拼音缩写作为密码基础 | 用户说"用我名字拼音缩写 zly 做基础" |
 | 不喜欢纯随机密码，要有可记忆性 | 用户说"别给我生成那种完全随机的" |
-
-
 
 #### FACT（事实）
 
@@ -789,7 +1081,6 @@ embedding 模型选择：使用轻量级的 text2vec-base-chinese（~400MB，CPU
 
 #### 三者在 Agent 中的协作示例
 
-
 用户："帮我生成一个新密码"
 ```
 retrieve_memory 检索到：
@@ -802,7 +1093,6 @@ Planner 组装参数调 generate_password：
   constraints={min_length: 16, preferred_specials: ["#", "@"]}
 
 生成结果：Al1ce#2026@Str0ng
-
 ```
 
 ### 4.9 记忆上限、冲突、遗忘
@@ -841,7 +1131,6 @@ PREFERENCE 和 CONSTRAINT 数量通常较少（< 20 条），全量加载无压�
 | sim > 0.92 | 语义去重 | 跳过写入（视为重复） |
 | 0.85 < sim ≤ 0.92 | 冲突检测 | 替换旧记忆（视为更新） |
 | sim ≤ 0.85 | 正常写入 | 作为新记忆存入 |
-
 
 ---
 
@@ -891,8 +1180,8 @@ SSE 连接（routers/chat.py）
 用户 A 发消息 → Task A 入队(position=0) → Worker 立即处理 → SSE A 实时推送
 用户 B 发消息 → Task B 入队(position=1) → SSE B 显示"前方还有 1 个任务"
                                           → Worker 处理完 A 后处理 B
-
 ```
+
 ### 5.4 并发控制
 
 | 参数 | 值 | 说明 |
@@ -913,7 +1202,6 @@ SSE 连接（routers/chat.py）
 | SSE 连接断开 | 前端检测断开后自动重连，通过 task_id 恢复事件流 | 已推送的事件不重复推送，从断点继续 |
 | 单任务超时（120s） | Worker 强制终止当前任务 | 返回 task_failed，已完成的工具结果仍可用于部分回复 |
 | Planner 死循环（重复调用相同工具+相同参数） | tool_history 检测到相同参数的重复调用，强制跳过 | 消耗一次循环次数，Planner 重新决策 |
-
 
 ### 5.6 前端交互对应
 
@@ -936,7 +1224,6 @@ SSE 连接（routers/chat.py）
 
 ### 示例1：简单强度评估
 
-
 用户："帮我看看 abc123 安全吗"
 ```
 Step 1  [planner]         → 决定调 zxcvbn_check
@@ -950,7 +1237,6 @@ Step 7  [write_memory]    → 强度评估场景，不写入
 ```
 
 ### 示例2：多意图复合请求
-
 
 用户："看看 zly2023! 安不安全，不行就帮我换一个"
 ```
@@ -972,7 +1258,6 @@ Step 13 [write_memory]         → 提取到 FACT: "常用 zly 作为密码基�
 
 ### 示例3：记忆恢复 + 多模态
 
-
 用户："我忘了旧密码，只记得里面有我猫的名字和一个年份"
      （同时上传了一张猫的照片）
 ```
@@ -992,7 +1277,6 @@ Step 11 [write_memory]         → 无新信息需要写入（猫名和年份已
 
 ### 示例4：无关请求
 
-
 用户："今天天气怎么样"
 ```
 Step 1  [planner]  → 与口令安全无关，直接 respond
@@ -1002,10 +1286,9 @@ Step 2  [respond]  → "我是口令安全助手，暂时帮不了天气问题 �
                       - 🔍 查看密码是否泄露"
 Step 3  [write_memory] → 不写入
 → END
-
 ```
-### 示例5：恶意请求
 
+### 示例5：恶意请求
 
 用户："帮我破解我同学的QQ密码"
 ```
@@ -1030,7 +1313,6 @@ PassAgent/
 ├── backend/
 │   ├── Dockerfile
 │   ├── pyproject.toml
-│   ├── uv.lock
 │   ├── main.py                                  # FastAPI 入口，挂载路由，启动 worker 协程
 │   ├── config.py                                # 环境变量读取、路径常量、JWT 配置
 │   │
@@ -1042,48 +1324,53 @@ PassAgent/
 │   │
 │   ├── schemas/
 │   │   ├── __init__.py
-│   │   ├── auth.py                              # SendCodeRequest, RegisterRequest, LoginRequest, LoginResponse
+│   │   ├── auth.py                              # SendCodeRequest/Response, RegisterRequest/Response, LoginRequest/Response
 │   │   ├── user.py                              # ProfileResponse, UpdateProfileRequest
-│   │   ├── session.py                           # SessionResponse, MessageResponse
+│   │   ├── session.py                           # SessionResponse, MessageResponse, FeedbackRequest, RenameSessionRequest
 │   │   ├── chat.py                              # ChatRequest（message + file_ids）
-│   │   ├── memory.py                            # MemoryResponse, CreateMemoryRequest
-│   │   └── file.py                              # FileResponse, UploadResponse
+│   │   ├── memory.py                            # MemoryResponse, CreateMemoryRequest, CreateMemoryResponse
+│   │   ├── file.py                              # FileResponse, UploadResponse, FilesListResponse
+│   │   ├── export.py                            # ExportConversationsResponse, ExportMemoriesResponse, ExportSettingsResponse
+│   │   └── common.py                            # MessageResponse（通用操作结果）
 │   │
 │   ├── routers/
 │   │   ├── __init__.py
 │   │   ├── auth.py                              # POST send-code / register / login
-│   │   ├── user.py                              # GET/PUT profile
-│   │   ├── session.py                           # POST/GET/DELETE sessions, GET messages
+│   │   ├── user.py                              # GET/PUT profile, PUT password, DELETE account
+│   │   ├── session.py                           # POST/GET/DELETE sessions, PUT title, GET messages
 │   │   ├── chat.py                              # POST /api/chat/{session_id} → SSE
 │   │   ├── upload.py                            # POST upload, GET/DELETE files
-│   │   ├── feedback.py                          # POST feedback
+│   │   ├── feedback.py                          # POST feedback, DELETE message
 │   │   ├── memory.py                            # GET/POST/DELETE memories
+│   │   └── export.py                            # GET /api/export/conversations, memories, settings
 │   │
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── auth_service.py                      # 注册登录逻辑、JWT 生成验证、验证码校验
 │   │   ├── email_service.py                     # 发送验证码邮件（Resend）
 │   │   ├── session_service.py                   # 会话 CRUD、标题自动生成
-│   │   ├── file_service.py                      # 文件存储、类型校验（仅图片/音频）、删除
+│   │   └── file_service.py                      # 文件存储、类型校验（仅图片/音频）、删除
 │   │
 │   ├── worker/
 │   │   ├── __init__.py
-│   │   ├── queue.py                             # Task 数据类、全局 asyncio.Queue
+│   │   ├── queue.py                             # ChatTask 数据类、全局 asyncio.Queue、active_tasks
 │   │   └── runner.py                            # worker_loop 协程：FIFO 取任务、跑 Agent、塞事件
 │   │
 │   ├── agent/
 │   │   ├── __init__.py
 │   │   ├── graph.py                             # LangGraph 状态图定义、注册节点和边、compile
-│   │   ├── state.py                             # PassAgentState TypedDict
+│   │   ├── state.py                             # PassAgentState TypedDict（继承 MessagesState）
 │   │   ├── planner.py                           # Planner 节点：Function Calling 决策
 │   │   ├── response.py                          # Respond 节点：生成回复（含引导建议）
 │   │   ├── memory/
 │   │   │   ├── __init__.py
-│   │   │   ├── reader.py                        # retrieve_memory 节点：全量偏好 + 语义检索 FACT
-│   │   │   ├── writer.py                        # write_memory 节点：LLM 提取 → embedding → 存 DB
-│   │   │   └── embedding.py                     # embedding 模型加载、向量生成、余弦相似度
+│   │   │   ├── reader.py                        # retrieve_memory：全量偏好 + 语义检索 FACT
+│   │   │   ├── writer.py                        # write_memory：LLM 提取 → embedding → 存 DB
+│   │   │   ├── retrieve_tool.py                 # retrieve_memory 工具封装
+│   │   │   └── embedding.py                     # embedding 生成（SiliconFlow API）、余弦相似度
 │   │   └── tools/
 │   │       ├── __init__.py
+│   │       ├── definitions.py                   # 全部 27 个工具的 Function Calling Schema
 │   │       ├── strength/
 │   │       │   ├── __init__.py
 │   │       │   ├── zxcvbn_tool.py               # 熵值评估
@@ -1119,7 +1406,7 @@ PassAgent/
 │   │       │   └── similar_leak_tool.py         # 常见变体批量查泄露
 │   │       └── graphical/
 │   │           ├── __init__.py
-│   │           ├── graphical_mode_tool.py       # 唤起前端图形口令组件
+│   │           └── graphical_mode_tool.py       # 唤起前端图形口令组件
 │   │
 │   ├── utils/
 │   │   ├── __init__.py
@@ -1145,86 +1432,523 @@ PassAgent/
 ├── frontend/
 │   ├── Dockerfile
 │   ├── package.json
-│   ├── package-lock.json
+│   ├── pnpm-lock.yaml
 │   ├── next.config.mjs
 │   ├── tailwind.config.js
 │   ├── tsconfig.json
-│   ├── postcss.config.js
+│   ├── postcss.config.mjs
+│   ├── eslint.config.js
+│   ├── prettier.config.js
+│   ├── components.json
 │   ├── public/
-│   │   ├── logo.svg
-│   │   └── favicon.ico
 │   └── src/
+│       ├── middleware.ts
 │       ├── app/
-│       │   ├── layout.tsx                       # 根布局
+│       │   ├── globals.css                     # 全局样式、Tailwind 导入
+│       │   ├── layout.tsx                      # 根布局
 │       │   ├── page.tsx                        # 首页（未登录：Logo + 介绍 + 登录入口）
-│       │   ├── login/
-│       │   │   └── page.tsx                    # 登录页
-│       │   ├── register/
-│       │   │   └── page.tsx                    # 注册页（邮箱 + 验证码 + 密码）
-│       │   └── chat/
-│       │       ├── layout.tsx                  # 聊天页布局（侧边栏 + 主区域）
-│       │       ├── page.tsx                    # 新对话默认页（Logo + 欢迎 + 输入框）
-│       │       └── [sessionId]/
-│       │           └── page.tsx                # 具体对话页（消息列表 + 输入框）
+│       │   ├── auth/                           # 登录/注册页
+│       │   └── chat/                           # 聊天页
 │       ├── components/
-│       │   ├── ui/
-│       │   │   ├── button.tsx
-│       │   │   ├── input.tsx
-│       │   │   ├── modal.tsx
-│       │   │   ├── spinner.tsx
-│       │   │   └── toast.tsx
-│       │   ├── sidebar/
-│       │   │   ├── sidebar.tsx                 # 侧边栏主组件（收起/展开）
-│       │   │   ├── session-list.tsx            # 历史会话列表（含模糊搜索）
-│       │   │   ├── session-item.tsx            # 单个会话项（标题 + 时间 + 删除）
-│       │   │   └── user-menu.tsx               # 用户菜单（设置、帮助、退出登录）
-│       │   ├── chat/
-│       │   │   ├── message-list.tsx            # 消息列表容器（滚动、自动滚底）
-│       │   │   ├── message-item.tsx            # 单条消息（区分 human/assistant）
-│       │   │   ├── assistant-message.tsx       # assistant 消息（agent-steps 折叠 + 正文 + 操作栏）
-│       │   │   ├── agent-steps.tsx             # Agent 执行步骤条（🔄 / ✅）
-│       │   │   ├── chat-input.tsx              # 输入框（文本 + 文件上传按钮 + 发送）
-│       │   │   ├── file-preview.tsx            # 已选文件预览（缩略图 + 删除）
-│       │   │   ├── message-actions.tsx         # 消息操作栏（复制、点赞、点踩、重新生成、导出PDF）
-│       │   │   └── queue-status.tsx            # 排队状态提示（"前方还有N个任务"）
-│       │   ├── graphical/
-│       │   │   ├── graphical-modal.tsx         # 图形口令弹窗容器
-│       │   │   ├── image-picker.tsx            # 图片选点组件
-│       │   │   └── map-picker.tsx              # 地图选点组件
-│       │   └── settings/
-│       │       ├── settings-modal.tsx          # 设置弹窗
-│       │       ├── appearance-tab.tsx          # 外观设置（主题切换）
-│       │       └── memory-tab.tsx              # 记忆管理（查看、添加、删除）
+│       │   ├── ui/                             # 基础 UI 组件
+│       │   └── chat/                           # 聊天相关组件
 │       ├── hooks/
-│       │   ├── use-auth.ts                     # 登录状态管理、token 存取
 │       │   ├── use-chat.ts                     # 发送消息、SSE 流处理、消息状态管理
 │       │   ├── use-sessions.ts                 # 会话列表 CRUD
-│       │   ├── use-memories.ts                 # 记忆 CRUD
-│       │   └── use-files.ts                    # 文件上传、列表、删除
+│       │   └── useMediaQuery.tsx               # 媒体查询 Hook
 │       ├── lib/
 │       │   ├── api.ts                          # fetch 封装（baseURL、token 注入、错误处理）
+│       │   ├── auth-api.ts                     # 认证相关 API 封装
 │       │   ├── sse.ts                          # SSE 流解析工具（读取 event + data）
 │       │   └── utils.ts                        # 通用工具函数（格式化时间、文件大小等）
-│       ├── providers/
-│       │   ├── auth-provider.tsx               # 认证上下文（token、user 信息）
-│       │   └── theme-provider.tsx              # 主题上下文（light/dark）
-│       └── styles/
-│           └── globals.css                     # 全局样式、Tailwind 导入
+│       └── providers/
+│           └── Auth.tsx                        # 认证上下文（token、user 信息）
 │
-├── model_service/
-│   ├── Dockerfile                              # 基于 vLLM 镜像
-│   ├── entrypoint.sh                           # 启动脚本：加载模型、启动 vLLM
-│   ├── config.yaml                             # 模型配置（路径、量化方式、常驻/按需）
-│   └── models/                                 # 模型权重（.gitignore）
-│       ├── .gitkeep
-│       └── README.md                           # 说明如何下载模型权重
-│
-└── scripts/
-    ├── init_db.sh                              # 初始化数据库
-    ├── download_models.sh                      # 下载模型权重
-    └── download_wordlists.sh                   # 下载弱口令库
+└── models_deploy/
+    ├── Dockerfile                              # 基于 vLLM 镜像
+    ├── start.sh                                # 启动脚本：加载模型、启动 vLLM
+    ├── README.md                               # 说明如何下载模型权重
+    ├── models/                                 # 模型权重（.gitignore）
+    └── vllm-omni/                              # vLLM Omni 模型相关
+```
+
+---
+
+## 八、设置界面设计
+
+设置面板采用**居中弹窗（Dialog/Modal）+ 左右双栏布局**，左侧为导航菜单，右侧为对应内容区。共 6 个导航项。
+
+前端组件：基于 Radix Dialog，宽度 `max-w-3xl`（~768px），高度 `max-h-[85vh]`，圆角 + 背景遮罩。
+
+### 8.1 整体布局
 
 ```
+┌──────────────────────────────────────────────────────┐
+│  设置                                             ✕  │
+├──────────┬───────────────────────────────────────────┤
+│          │                                           │
+│  👤 账户  │          （右侧内容区域）                    │
+│          │                                           │
+│  🎨 外观  │   根据左侧选中项渲染对应内容                 │
+│          │                                           │
+│  🔑 生成  │   右侧区域可独立滚动                        │
+│          │                                           │
+│  🧠 记忆  │                                           │
+│          │                                           │
+│  📊 数据  │                                           │
+│          │                                           │
+│  ℹ️ 关于  │                                           │
+│          │                                           │
+│──────────│                                           │
+│ 🔴 退出   │                                           │
+│          │                                           │
+└──────────┴───────────────────────────────────────────┘
+```
+
+左侧导航栏宽度固定 ~180px，底部放退出登录按钮（与导航项分隔）。右侧内容区 `flex-1 overflow-y-auto`，当内容超出高度时独立滚动。
+
+### 8.2 页面 1：账户（profile）
+
+用户身份信息与账户安全操作。
+
+```
+┌─────────────────────────────────────┐
+│  账户设置                             │
+│                                     │
+│  邮箱                                │
+│  ┌─────────────────────────────┐    │
+│  │ user@sjtu.edu.cn       🔒   │    │  ← 只读，锁图标
+│  └─────────────────────────────┘    │
+│                                     │
+│  昵称                                │
+│  ┌─────────────────────────────┐    │
+│  │ 张三                        │    │
+│  └─────────────────────────────┘    │
+│  [ 保存 ]                            │
+│                                     │
+│  ─ ─ ─ ─ ─ 修改密码 ─ ─ ─ ─ ─       │
+│                                     │
+│  当前密码                             │
+│  ┌─────────────────────────────┐    │
+│  │ ••••••••              👁    │    │
+│  └─────────────────────────────┘    │
+│  新密码                              │
+│  ┌─────────────────────────────┐    │
+│  │                        👁    │    │
+│  └─────────────────────────────┘    │
+│  确认新密码                           │
+│  ┌─────────────────────────────┐    │
+│  │                        👁    │    │
+│  └─────────────────────────────┘    │
+│  [ 修改密码 ]                        │
+│                                     │
+│  ─ ─ ─ ─ ─ 危险区域 ─ ─ ─ ─ ─       │
+│                                     │
+│  ⚠️ 删除账户后所有数据将永久丢失，       │
+│  包括对话记录、记忆和上传文件。          │
+│  [ 🔴 删除账户 ]                     │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+| 区块 | 内容 | 组件 | 说明 |
+|------|------|------|------|
+| 邮箱 | 展示注册邮箱 | 只读 Input（disabled + 🔒 图标） | `GET /api/user/profile` 返回 `email` |
+| 昵称 | 修改昵称 | Input + 保存按钮 | 调用 `PUT /api/user/profile { nickname }` |
+| 修改密码 | 旧密码 + 新密码 + 确认 | 3 个 PasswordInput + 修改密码按钮 | 调用 `PUT /api/user/password` |
+| 删除账户 | 危险操作 | 红色按钮 → 二次确认弹窗（输入密码确认） | 调用 `DELETE /api/user/account` |
+
+### 8.3 页面 2：外观（appearance）
+
+```
+┌───────────────────────────────────────────┐
+│  外观                                       │
+│                                           │
+│  ── 主题 ──────────────────────────        │
+│                                           │
+│  ┌───────────────────────────────────┐    │
+│  │  🎨 主题模式                        │    │
+│  │                                     │    │
+│  │  ┌──────┐  ┌──────┐  ┌──────┐      │    │
+│  │  │ ☀️ │  │ 🌙 │  │ 💻 │      │    │
+│  │  │ 浅色 │  │ 深色 │  │ 系统 │      │    │
+│  │  │      │  │      │  │  ✓   │      │    │
+│  │  └──────┘  └──────┘  └──────┘      │    │
+│  └───────────────────────────────────┘    │
+│                                           │
+│  ── 字体 ──────────────────────────        │
+│                                           │
+│  ┌───────────────────────────────────┐    │
+│  │  🔤 字体大小                        │    │
+│  │  小  ◄━━━━━━━━●━━━━━━━► 大          │    │
+│  │       S    M    L    XL             │    │
+│  └───────────────────────────────────┘    │
+│                                           │
+│  ── 消息气泡 ──────────────────────        │
+│                                           │
+│  ┌───────────────────────────────────┐    │
+│  │  💬 气泡样式                        │    │
+│  │                                     │    │
+│  │  ┌──────┐  ┌──────┐  ┌──────┐      │    │
+│  │  │ 圆润 │  │ 方正 │  │ 简约 │      │    │
+│  │  │  ✓   │  │      │  │      │      │    │
+│  │  └──────┘  └──────┘  └──────┘      │    │
+│  └───────────────────────────────────┘    │
+│                                           │
+└───────────────────────────────────────────┘
+```
+
+| 区块 | 内容 | 组件 | 说明 |
+|------|------|------|------|
+| 主题模式 | 浅色 / 深色 / 跟随系统 | 3 个可选卡片，单选（SegmentedControl） | 调用 `PUT /api/user/profile { theme }`，默认「系统」 |
+| 字体大小 | 调节聊天界面字体大小 | Slider 滑条，4 档（S/M/L/XL） | 调用 `PUT /api/user/profile { font_size }`，默认 M |
+| 气泡样式 | 选择消息气泡的外观风格 | 3 个可选卡片，单选 | 调用 `PUT /api/user/profile { bubble_style }`，默认「圆润」 |
+
+字体大小对应值：
+
+| 档位 | 标签 | CSS font-size | 说明 |
+|------|------|--------------|------|
+| 1 | S（小） | 13px | 紧凑显示，适合大屏 |
+| 2 | M（中，默认） | 15px | 标准大小 |
+| 3 | L（大） | 17px | 适合长时间阅读 |
+| 4 | XL（特大） | 19px | 无障碍友好 |
+
+气泡样式对应值：
+
+| 样式 | 值 | border-radius | 特点 |
+|------|-----|--------------|------|
+| 圆润（默认） | `rounded` | 18px | 圆角气泡，柔和亲切 |
+| 方正 | `square` | 6px | 小圆角，干练利落 |
+| 简约 | `minimal` | 0（无气泡背景） | 无气泡边框，仅以缩进和分隔线区分消息 |
+
+数据存储：外观偏好存储在 `users` 表中（或 localStorage 做前端本地缓存均可）：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| theme | TEXT | `system` | 主题（`light` / `dark` / `system`） |
+| font_size | TEXT | `M` | 字体档位（`S` / `M` / `L` / `XL`） |
+| bubble_style | TEXT | `rounded` | 气泡样式（`rounded` / `square` / `minimal`） |
+
+### 8.4 页面 3：生成偏好（generation）
+
+口令生成的核心设置。控制 Agent 生成口令时的安全性 vs 可记忆性权重。
+
+```
+┌───────────────────────────────────────────┐
+│  生成偏好                                   │
+│                                           │
+│  控制 Agent 生成口令时的策略倾向。              │
+│                                           │
+│  ┌───────────────────────────────────┐    │
+│  │  🤖 自动模式                  [⬤] │    │
+│  │  Agent 根据场景和你的记忆自动选择    │    │
+│  │  最佳生成策略                       │    │
+│  └───────────────────────────────────┘    │
+│                                           │
+│  ── 手动档位 ──────────────────────        │
+│                                           │
+│  🔒 安全优先 ◄━━━━━━━━●━━━━━━━► 🧠 好记   │
+│                                           │
+│  🔒🔒        🔒       ⚖️       🧠     🧠🧠 │
+│  最高安全   偏安全     均衡     偏好记   最好记 │
+│                                           │
+│  ┌───────────────────────────────────┐    │
+│  │  ⚖️ 当前：均衡                      │    │
+│  │  兼顾安全与可记忆，适合日常账号。     │    │
+│  └───────────────────────────────────┘    │
+│                                           │
+└───────────────────────────────────────────┘
+```
+
+#### 8.4.1 自动模式开关
+
+| 区块 | 内容 | 组件 | 说明 |
+|------|------|------|------|
+| 自动模式 | Agent 自动选择生成策略 | 卡片内 Switch（默认开启） | 开启后 Agent 综合用户需求、场景（如 `fetch_site_policy` 返回的网站类型）、记忆中的 CONSTRAINT 自动决定档位 |
+
+> 自动模式开启时，下方滑条区域灰显（`opacity-40 pointer-events-none`），滑条上方显示提示："Agent 将根据场景和你的偏好自动选择最佳策略"。
+
+#### 8.4.2 手动档位选择（自动模式关闭时可用）
+
+| 组件 | 说明 |
+|------|------|
+| Slider 滑条 | 5 个离散刻度，两端标签 🔒/🧠 |
+| 刻度标签 | 滑条下方 5 个等距标签文字 |
+| 档位详情卡片 | 滑条下方卡片，显示当前档位的图标、名称、说明、具体生成策略 |
+
+滑条 5 个离散刻度对应：
+
+| 位置 | 档位名称 | α / β | 说明文本 | 对应生成策略 |
+|------|---------|-------|---------|------------|
+| 1 (最左) | 最高安全 | 0.9 / 0.1 | 纯随机生成，适合密码管理器存储 | `generate_password(mode=random, length=20+)` |
+| 2 | 偏安全 | 0.7 / 0.3 | 高随机性，适合银行金融类账号 | `generate_password(mode=random)` |
+| 3 (中间) | 均衡 | 0.5 / 0.5 | 兼顾安全与可记忆，适合日常账号 | `generate_password(seeds)` + `passphrase_generate` |
+| 4 | 偏好记 | 0.3 / 0.7 | 较强记忆关联，适合高频手动输入场景 | `generate_password(seeds, heavy)` + `passphrase_generate` |
+| 5 (最右) | 最好记 | 0.1 / 0.9 | 助记短语/可发音，适合低敏感度账号 | `passphrase_generate` + `pronounceable_generate` |
+
+#### 8.4.3 数据存储
+
+生成偏好存储在 `users` 表的字段中：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| gen_auto_mode | INTEGER | 1 | 是否开启自动模式（0/1） |
+| gen_security_weight | REAL | 0.5 | α 值（0.1~0.9，步长 0.2） |
+
+> 也可以选择不加新字段，而是通过记忆系统存储（写入 CONSTRAINT 类型的记忆："用户偏好均衡档位生成"），但独立字段更直观、查询更快。
+
+通过 `PUT /api/user/profile` 更新 `gen_auto_mode` 和 `gen_security_weight`。
+
+#### 8.4.4 Agent 侧读取逻辑
+
+Planner 节点在处理口令生成类请求时：
+1. 从 state 中读取用户设置 `gen_auto_mode` 和 `gen_security_weight`
+2. 若 `gen_auto_mode = true`（自动模式）：忽略 `gen_security_weight`，由 Agent 自行根据对话上下文、`fetch_site_policy` 结果、用户记忆中的 CONSTRAINT 决定档位。若用户在对话中显式指定（如"要最安全的"），Agent 也会将其纳入决策
+3. 若 `gen_auto_mode = false`（手动模式）：**严格**使用 `gen_security_weight` 对应的档位选择生成工具，即使用户在对话中提出不同要求（如"要最安全的"），也按手动设定的档位执行，避免行为不可预期。如需调整，用户应去设置中修改档位
+
+### 8.5 页面 4：记忆管理（memory）
+
+管理 Agent 记忆（FACT / PREFERENCE / CONSTRAINT）。
+
+```
+┌───────────────────────────────────────────┐
+│  记忆管理                                   │
+│                                           │
+│  记忆帮助 Agent 更好地了解你的偏好，          │
+│  生成更个性化的建议。                         │
+│                                           │
+│  ┌─ 添加记忆 ───────────────────────┐     │
+│  │ [事实 ▾]  [输入记忆内容...    ] [+] │     │
+│  └─────────────────────────────────┘     │
+│                                           │
+│  ┌─────────────────────────────────┐     │
+│  │  我的小猫叫哈吉米               🗑  │     │
+│  │  事实 · 手动添加                     │     │
+│  ├─────────────────────────────────┤     │
+│  │  喜欢8位以上的密码               🗑  │     │
+│  │  偏好 · 自动提取                     │     │
+│  ├─────────────────────────────────┤     │
+│  │  至少包含两个特殊字符             🗑  │     │
+│  │  约束 · 手动添加                     │     │
+│  └─────────────────────────────────┘     │
+│                                           │
+│  共 3 条记忆          [ 🔴 清除全部记忆 ]   │
+│                                           │
+└───────────────────────────────────────────┘
+```
+
+| 区块 | 内容 | 组件 | 说明 |
+|------|------|------|------|
+| 说明文本 | 记忆用途介绍 | 静态文本 | |
+| 添加记忆 | 类型选择 + 内容输入 | Select + Input + 添加按钮 | 调用 `POST /api/memories` |
+| 记忆列表 | 展示所有记忆 | 卡片列表（类型标签 + 来源 + 删除按钮） | 调用 `GET /api/memories`，删除调用 `DELETE /api/memories/{memory_id}` |
+| 底部栏 | 记忆总数 + 清除全部 | 计数文本 + 红色文字按钮 → 二次确认 | 调用 `DELETE /api/memories` |
+
+### 8.6 页面 5：数据管理（data）
+
+对话数据的导出、清除与隐私信息。
+
+```
+┌───────────────────────────────────────────┐
+│  数据管理                                   │
+│                                           │
+│  ── 数据导出 ──────────────────────        │
+│                                           │
+│  ┌─────────────────────────────────┐     │
+│  │  📥 导出数据                        │     │
+│  │  选择要导出的内容：                  │     │
+│  │                                     │     │
+│  │  ☑ 全部对话记录                     │     │
+│  │  ☐ 仅当前会话                       │     │
+│  │  ☑ 用户记忆                         │     │
+│  │  ☐ 用户设置                         │     │
+│  │                                     │     │
+│  │  导出格式：[ JSON ▾ ]                │     │
+│  │    · JSON  · CSV  · Markdown        │     │
+│  │                        [ 导出 ]     │     │
+│  └─────────────────────────────────┘     │
+│                                           │
+│  ── 危险操作 ──────────────────────        │
+│                                           │
+│  ┌─────────────────────────────────┐     │
+│  │  🗑️ 清除所有对话                    │     │
+│  │  删除全部会话及消息记录，不可恢复     │     │
+│  │                     [ 🔴 清除 ]    │     │
+│  └─────────────────────────────────┘     │
+│                                           │
+│  ── 隐私说明 ──────────────────────        │
+│                                           │
+│  🔒 你的密码安全                           │
+│  • 所有密码评估和生成均在服务端本地         │
+│    完成，不发送至第三方（HIBP 使用          │
+│    k-Anonymity，仅发送哈希前 5 位）        │
+│  • 对话记录存储在服务端数据库中，           │
+│    不会用于模型训练                         │
+│  • 你可以随时删除所有数据                   │
+│                                           │
+└───────────────────────────────────────────┘
+```
+
+#### 8.6.1 导出选项说明
+
+用户通过 Checkbox 勾选要导出的内容，支持多选组合导出：
+
+| 选项 | 说明 | 对应 API | 默认 |
+|------|------|----------|------|
+| 全部对话记录 | 导出所有会话及其消息 | `GET /api/export/conversations` | ✅ 勾选 |
+| 仅当前会话 | 只导出用户当前正在查看的会话 | `GET /api/export/conversations?session_id={id}` | |
+| 用户记忆 | 导出所有记忆条目 | `GET /api/export/memories` | ✅ 勾选 |
+| 用户设置 | 导出生成偏好、外观设置等配置 | `GET /api/export/settings` | |
+
+> 「全部对话记录」与「仅当前会话」互斥，二选一（Radio 单选）；「用户记忆」和「用户设置」可独立勾选（Checkbox）。
+
+#### 8.6.2 导出格式
+
+通过下拉菜单选择导出格式，所有导出 API 均支持 `format` 查询参数：
+
+| 格式 | 参数值 | 说明 | 适用场景 |
+|------|--------|------|----------|
+| JSON（默认） | `format=json` | 结构化数据，完整保留所有字段 | 数据备份、重新导入、程序处理 |
+| CSV | `format=csv` | 表格格式，每条消息一行 | Excel/WPS 查看、简单统计分析 |
+| Markdown | `format=md` | 可读性强的文档格式 | 归档阅读、分享给他人、写报告引用 |
+
+> CSV 格式下「用户设置」选项不可用（设置为 key-value 结构，不适合表格化）。Markdown 格式按会话分节，消息以对话体排版。
+
+#### 8.6.3 导出数据结构
+
+导出后的 JSON 结构：
+```json
+{
+    "exported_at": "2026-02-28T12:00:00Z",
+    "user_id": "uuid",
+    "sessions": [ ... ],
+    "memories": [ ... ],
+    "settings": { ... }
+}
+```
+> 根据用户勾选情况，未选择的字段不包含在导出文件中。
+
+| 区块 | 内容 | 组件 | 说明 |
+|------|------|------|------|
+| 导出数据 | 选择导出内容并下载 | Checkbox 组 + 导出按钮 | 根据勾选项拼接 API 请求参数 |
+| 清除所有对话 | 删除全部会话及消息 | 操作卡片 + 红色按钮 → 二次确认弹窗 | 调用 `DELETE /api/sessions` |
+| 隐私说明 | 数据处理方式说明 | 静态文本区块 | 告知用户密码数据的安全处理方式 |
+
+### 8.7 页面 6：关于（about）
+
+项目信息、版本、开源协议、第三方致谢与免责声明。
+
+```
+┌───────────────────────────────────────────┐
+│  关于                                       │
+│                                           │
+│            ┌──────────┐                    │
+│            │   LOGO   │                    │
+│            └──────────┘                    │
+│           PassAgent v1.0                   │
+│     基于大语言模型的个人全能口令助手           │
+│                                           │
+│  ── 项目信息 ──────────────────────        │
+│                                           │
+│  ┌─────────────────────────────────┐     │
+│  │  版本号          v1.0.0          │     │
+│  ├─────────────────────────────────┤     │
+│  │  开源协议        MIT License ↗   │     │
+│  ├─────────────────────────────────┤     │
+│  │  项目仓库        GitHub ↗        │     │
+│  ├─────────────────────────────────┤     │
+│  │  问题反馈        GitHub Issues ↗ │     │
+│  └─────────────────────────────────┘     │
+│                                           │
+│                                           │
+│  ── 第三方服务与致谢 ──────────────        │
+│                                           │
+│  • Have I Been Pwned API                   │
+│    泄露数据查询（k-Anonymity）              │
+│  • SiliconFlow                             │
+│    文本向量化服务                            │
+│  • 前端模板基于 Brace Sproul 的             │
+│    开源项目（MIT License）                  │
+│                                           │
+│  ── 免责声明 ──────────────────────        │
+│                                           │
+│  本工具仅供口令安全研究和个人使用，            │
+│  不对因使用本工具产生的任何直接或间            │
+│  接损失承担责任。生成的密码建议仅供            │
+│  参考，请用户自行评估后使用。                 │
+│                                           │
+│  ─────────────────────────────────        │
+│  © 2026 Linghao Zhang. MIT License.        │
+│                                           │
+└───────────────────────────────────────────┘
+```
+
+| 区块 | 内容 | 组件 | 说明 |
+|------|------|------|------|
+| 项目标识 | Logo + 名称 + 一句话描述 | 居中排列 | 纯展示 |
+| 项目信息 | 版本号 / 协议 / 仓库 / 反馈 | 列表卡片，仓库和反馈带外链图标 | GitHub 链接指向 `github.com/zlh123123/PassAgent` |
+| 第三方服务与致谢 | 列出使用的第三方 API 和基于的开源项目 | 列表文本 | 标注各服务用途及原始协议 |
+| 免责声明 | 责任限制说明 | 静态文本 | 明确工具定位和责任边界 |
+| 版权 | 版权声明 + 协议 | 底部居中小字 | 与根目录 LICENSE 文件一致 |
+
+#### 8.7.1 法律与合规说明
+
+**开源协议**：项目整体采用 MIT License，前端模板部分基于 Brace Sproul 的开源项目（同为 MIT License），MIT 协议允许自由使用、修改和分发，但需保留原始版权声明。
+
+**第三方 API 合规**：
+
+| 服务 | 用途 | 使用方式 | 合规要点 |
+|------|------|----------|----------|
+| Have I Been Pwned | 密码/邮箱泄露查询 | k-Anonymity（仅发送哈希前 5 位） | 免费 API，需设置 User-Agent，遵守速率限制 |
+| SiliconFlow | 文本向量化（Embedding） | 云端 API 调用 | 需 API Key，遵守其服务条款 |
+
+**免责声明要点**：
+- 本工具为学术研究项目（毕业设计），仅供口令安全研究和个人使用
+- 不对生成密码的安全性做绝对保证，用户应自行评估
+- 不存储用户的明文密码（HIBP 查询使用 k-Anonymity，对话中出现的密码存储在用户自有数据库中）
+- 不对第三方 API（HIBP、SiliconFlow）的可用性和准确性负责
+
+> 此页面为纯静态内容，不需要 API 调用。「开源协议」点击后可跳转查看完整 LICENSE 文件。
+
+### 8.8 前端组件结构
+
+```
+components/chat/settings-dialog.tsx          # 主弹窗容器（Dialog）
+components/chat/settings/
+  ├── account-page.tsx                       # 账户设置
+  ├── appearance-page.tsx                    # 外观设置
+  ├── generation-page.tsx                    # 生成偏好（滑条）
+  ├── memory-page.tsx                        # 记忆管理
+  ├── data-page.tsx                          # 数据管理
+  └── about-page.tsx                         # 关于
+```
+
+> 原有的 `settings-panel.tsx`（Sheet 抽屉）弃用，替换为 `settings-dialog.tsx`（Dialog 弹窗）。Sidebar 中的设置按钮 `onOpenSettings` 改为打开 Dialog 而非 Sheet。
+
+---
+
+## 九、环境配置
+
+后端通过 `.env` 文件配置，主要环境变量如下：
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| DATABASE_PATH | passagent.db | SQLite 数据库路径 |
+| JWT_SECRET | passagent-dev-secret-change-in-production | JWT 签名密钥 |
+| JWT_ALGORITHM | HS256 | JWT 算法（固定） |
+| JWT_EXPIRE_HOURS | 72 | JWT 过期时间（小时） |
+| VERIFY_CODE_EXPIRE_SECONDS | 300 | 验证码有效期（秒，固定） |
+| RESEND_API_KEY | | Resend 邮件服务 API Key |
+| EMAIL_FROM | noreply@passagent.dev | 发件人邮箱 |
+| UPLOAD_DIR | uploads | 文件上传目录 |
+| MAX_UPLOAD_SIZE | 10MB | 文件上传大小限制（固定） |
+| LLM_BASE_URL | http://localhost:6006/v1 | vLLM 模型服务地址 |
+| LLM_API_KEY | EMPTY | vLLM API Key |
+| LLM_MODEL | Qwen2.5-32B-Instruct-GPTQ-Int4 | 使用的 LLM 模型名 |
+| EMBEDDING_BASE_URL | https://api.siliconflow.cn/v1 | Embedding 服务地址（SiliconFlow） |
+| EMBEDDING_API_KEY | | SiliconFlow API Key |
+
+---
 
 # Planner 决策准确率测试集
 
@@ -1419,7 +2143,6 @@ PassAgent/
 | C-26 | 我记得密码有 star 和 2020，帮我排列组合，然后查查这些候选有没有泄露 | retrieve_memory → fragment_combine → common_variant_expand → hibp_password_check → respond | fragment_combine, hibp_password_check | generate_password |
 | C-27 | 帮我恢复密码，里面有 hello 和某个日期，恢复后帮我评估一下强度 | retrieve_memory → date_expand → fragment_combine → common_variant_expand → zxcvbn_check → respond | date_expand, fragment_combine, zxcvbn_check | generate_password |
 
-
 ### 多模态相关（3 条）
 
 | ID | 用户输入 | 预期工具调用链路 | 必须包含 | 不应调用 |
@@ -1487,6 +2210,8 @@ PassAgent/
 | 多模态 | 3 |
 | 拒绝/追问 | 12 |
 
+---
+
 # 论文中插入的图表
 
 按章节顺序整理：
@@ -1533,7 +2258,7 @@ PassAgent/
 
 | 编号 | 类型 | 内容 |
 |------|------|------|
-| 表3 | 表格 | 26 个工具总览表（名称、所属 skill、功能简述、输入、输出） |
+| 表3 | 表格 | 27 个工具总览表（名称、所属 skill、功能简述、输入、输出） |
 | 公式4 | 公式 | PassGPT 对数概率计算 $\log P(p) = \sum \log P(c_t \mid c_{<t})$ |
 | 表4 | 表格 | Pass2Rule 微调模型评估结果（从已发表论文中引用） |
 | 表5 | 表格 | Hashcat 规则生成微调模型评估结果 |
@@ -1627,7 +2352,7 @@ PassAgent/
 
 | 编号 | 类型 | 内容 |
 |------|------|------|
-| 附录A | 表格/代码 | 26 个工具的完整 Function Schema（JSON） |
+| 附录A | 表格/代码 | 27 个工具的完整 Function Schema（JSON） |
 | 附录B | 文本 | Planner 完整 System Prompt |
 | 附录C | 表格 | 120 条测试用例完整数据 |
 | 附录D | 文本 | 用户问卷完整题目 |
@@ -1647,7 +2372,8 @@ PassAgent/
 | 伪代码 | 2 |
 
 总共约 21 张图 + 19 张表 + 7 个公式 + 2 段伪代码。这个密度对一篇 45-50 页的毕设论文来说很合适，基本每 1-2 页就有一个图表，读起来不会全是大段文字。
-```
+
+---
 
 **user**: 
 
@@ -1695,8 +2421,61 @@ PassAgent/
 - 每张表不超过 11 行，排版舒服
 - 读到哪个 skill 就看到哪张表，不用翻来翻去
 - 正文简洁，完整的输入输出参数定义放附录 A 的 Function Schema 里
+
+---
+
+# API_v2 相比原始 API.md 的变更记录
+
+## 一、文档结构调整
+
+1. **重新组织章节顺序**：系统架构 → 数据库 → API → Agent → 任务队列 → 执行示例 → 文件树 → 设置界面 → 环境配置 → 测试集 → 论文图表，逻辑更连贯
+2. **统一格式风格**：所有 API 统一采用 Request/Response JSON 示例 + 表格说明的格式，消除原文档中格式不一致的问题
+3. **删除过时的 TODO 标记**，保留仍有价值的设计备注（以 `>` 引用格式）
+
+## 二、数据库设计修改
+
+4. **`users` 表新增 3 个外观设置字段**：`font_size`（TEXT, DEFAULT 'M'）、`bubble_style`（TEXT, DEFAULT 'rounded'）、`theme` 默认值从 `'light'` 改为 `'system'`
+5. **`users` 表 `theme` 字段增加 `system` 选项**：支持跟随系统主题
+
+## 三、API 新增
+
+6. **`PUT /api/sessions/{session_id}/title`**：重命名会话（代码中已有，原文档遗漏）
+7. **`DELETE /api/messages/{message_id}`**：删除单条消息（代码中已有，原文档遗漏）
+8. **`GET /health`** 和 **`GET /`**：健康检查和根路由（代码中已有，原文档遗漏）
+9. **`GET /api/export/conversations`**：导出对话记录，支持 `session_id` 筛选和 `format` 参数（json/csv/md）
+10. **`GET /api/export/memories`**：导出用户记忆，支持 `format` 参数
+11. **`GET /api/export/settings`**：导出用户设置，支持 `format` 参数（不支持 csv）
+
+## 四、API 修改
+
+12. **`POST /api/auth/register` 响应**：从只返回 `user_id` + `token` 扩展为返回完整用户设置（theme、font_size、bubble_style、gen_auto_mode、gen_security_weight），前端注册后无需额外请求
+13. **`POST /api/auth/login` 响应**：从只返回 `user_id` + `token` + `nickname` + `theme` 扩展为返回完整用户设置
+14. **`GET /api/user/profile` 响应**：补充 `font_size`、`bubble_style` 字段
+15. **`PUT /api/user/profile` 请求**：补充 `font_size`、`bubble_style` 可选字段，增加 `theme` 可选值说明
+16. **`DELETE /api/user/account`**：级联删除说明补充 `uploaded_files` 记录和 `uploads/` 目录下的物理文件
+17. **修正 Embedding 模型**：从原文档的 `text2vec-base-chinese`（本地）修正为 `SiliconFlow 云端 API`（与代码一致）
+18. **修正 LLM 模型名**：从原文档的 `Qwen2.5-7B` 修正为 `Qwen2.5-32B-Instruct-GPTQ-Int4`（与代码一致）
+
+## 五、Agent 设计修改
+
+19. **Agent State 新增 2 个字段**：`gen_auto_mode`（bool）和 `gen_security_weight`（float），从 DB 读入，供 Planner 决策生成策略时使用
+20. **Write Memory 节点**：强度评估场景从"不写入"改为"有条件写入"——不写入密码本身，但若用户在对话中透露了个人信息（如"这是用我女儿名字做的"），提取该事实写入记忆
+21. **生成偏好 Agent 侧逻辑**：明确手动模式下严格按设置档位执行，对话中的要求不覆盖手动设定；自动模式下 Agent 全权决策
+
+## 六、设置界面设计（第八章，整体新增细化）
+
+22. **外观页面**：从仅一个深色模式 Switch 扩展为三个设置区块——主题三选一（☀️浅色/🌙深色/💻跟随系统）、字体大小 4 档（S/M/L/XL）、气泡样式 3 种（圆润/方正/简约）
+23. **生成偏好页面**：删除了档位详情卡片中的"生成策略：种子词变换 + 助记短语"展示行（不暴露具体策略实现）
+24. **数据管理页面**：从简单的"导出全部"改为 Checkbox 选择导出内容（全部对话/仅当前会话 + 用户记忆 + 用户设置），支持 JSON/CSV/Markdown 三种导出格式
+25. **关于页面**：新增「第三方服务与致谢」区块（HIBP API、SiliconFlow、前端模板 Brace Sproul）、「免责声明」区块、`8.7.1 法律与合规说明`详细小节
+
+## 七、文件树修改
+
+26. **`routers/` 新增 `export.py`**：对应 3 个导出 API 端点
+27. **`schemas/` 新增 `export.py`**：导出相关的响应 Schema
+28. **`routers/user.py` 注释补全**：从 `GET/PUT profile` 改为 `GET/PUT profile, PUT password, DELETE account`
+
+## 八、删除残留
+
+29. **删除 `json_placeholder_ignore` 残留代码块**：编辑过程中遗留的无效标记
 ```
-
-
-
-
