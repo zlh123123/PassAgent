@@ -1464,6 +1464,36 @@ PassAgent/
 │       └── providers/
 │           └── Auth.tsx                        # 认证上下文（token、user 信息）
 │
+├── eval/
+│   ├── README.md                               # 评估实验说明（环境、运行步骤、结果复现）
+│   ├── requirements.txt                        # 评估脚本依赖（openai、pandas、matplotlib 等）
+│   │
+│   ├── data/
+│   │   ├── test_cases.json                     # 120 条标注测试集（must_have / optional / must_not / stop_condition）
+│   │   └── user_profiles.json                  # 预设用户画像（记忆、历史），供多轮/记忆场景使用
+│   │
+│   ├── tool_eval/
+│   │   ├── run_tool_eval.py                    # 工具调用评估：逐条跑 Agent，收集 tool_history
+│   │   ├── score_tool_eval.py                  # 计算 Precision / Recall / 禁忌违反率
+│   │   └── results/                            # 工具调用评估结果输出（JSON + CSV）
+│   │
+│   ├── judge_eval/
+│   │   ├── run_baselines.py                    # 跑各 Baseline（Full / B1 / B2 / B3 / B4），收集回复
+│   │   ├── judge_prompt.txt                    # LLM-as-a-Judge 完整评审 Prompt（含 rubric）
+│   │   ├── run_judge.py                        # 调 Judge LLM 逐条打分，解析 A/B/C 分数
+│   │   ├── aggregate_scores.py                 # 聚合统计（均分、方差、一票否决率、按层级拆解）
+│   │   └── results/                            # Judge 评估结果输出（JSON + CSV）
+│   │
+│   ├── perf_eval/
+│   │   ├── run_perf.py                         # 端到端延迟测试：各节点计时
+│   │   └── results/                            # 性能数据输出
+│   │
+│   └── plots/
+│       ├── plot_tool_eval.py                   # 绘制工具调用评估图表
+│       ├── plot_judge_eval.py                  # 绘制 Judge 评估图表（雷达图、箱线图等）
+│       ├── plot_perf.py                        # 绘制性能分析图表
+│       └── figures/                            # 导出的图表文件（PDF/PNG，供论文插入）
+│
 └── models_deploy/
     ├── Dockerfile                              # 基于 vLLM 镜像
     ├── start.sh                                # 启动脚本：加载模型、启动 vLLM
@@ -2450,21 +2480,51 @@ C: <分数> | <理由>
 |------|----------|------|--------------------------------------|
 | **Full** | 完整系统（Agent + 全部工具 + 记忆） | 完整版 PassAgent | ✅ 提供 |
 | **B1** | 消融：去记忆（Agent + 全部工具，不检索/写入记忆） | 证明记忆系统的价值 | ❌ 不提供 |
-| **B2** | Baseline：裸 LLM 直接回答（相同 Qwen2.5-32B，不走 Agent，不调工具） | 证明 Agent+工具架构的价值 | ❌ 不提供 |
+| **B2** | Baseline：同模型裸 LLM（Qwen2.5-32B，不走 Agent，不调工具） | 证明 Agent+工具架构的价值 | ❌ 不提供 |
 | **B3**（可选） | 换基座模型（相同 Agent 代码，换更小的模型如 Qwen2.5-7B） | 证明模型选择的合理性 | ✅ 提供 |
+| **B4** | Baseline：更强闭源裸 LLM（如 GPT-4o / DeepSeek-V3，不走 Agent，不调工具） | 证明架构价值 > 模型参数量 | ❌ 不提供 |
+
+> **B4 的意义**：即使使用远强于本地 Qwen2.5-32B 的闭源大模型直接回答，由于缺乏专业工具（zxcvbn、HIBP、PCFG 等）和用户记忆，在 Outcome 正确性上仍难以超越 Agent 系统。这证明了**架构设计的价值大于单纯堆模型参数**。B4 仅需调用云端 API，无需本地部署，成本极低。
 
 > **测试集复用**：使用 4.2 的 120 条测试用例中的输入（去掉纯工具调用的边界用例，约选取 80-100 条适合端到端评估的用例），每条用例对每个 baseline 各跑一次，Judge 独立打分。
 
 #### 4.3.4 结果展示
 
+**主表（Baseline × 三维度 + 总分）**：一眼看到各系统整体优劣
+
+> 示意格式（数据待实验填充）：
+>
+> | 系统配置 | A: Outcome | B: Safety | C: Helpfulness | 总分 | Safety 否决率 |
+> |----------|-----------|-----------|----------------|------|--------------|
+> | **Full** | 4.2 | 4.8 | 4.1 | 4.30 | 0% |
+> | B1 去记忆 | 3.5 | 4.7 | 3.6 | 3.84 | 0% |
+> | B2 同模型裸LLM | 2.1 | 4.3 | 2.8 | 2.94 | 3% |
+> | B3 小模型Agent | 3.2 | 4.5 | 3.4 | 3.60 | 1% |
+> | B4 强模型裸LLM | 2.8 | 4.6 | 3.5 | 3.54 | 1% |
+
+**拆解表（Baseline × 5 Skill 总分）**：定位差距体现在哪些场景
+
+> 示意格式：
+>
+> | Skill 类别 | Full | B1 去记忆 | B2 同模型裸LLM | B4 强模型裸LLM |
+> |-----------|------|----------|---------------|---------------|
+> | 强度评估 | 4.4 | 4.1 | 2.5 | 3.2 |
+> | 口令生成 | 4.3 | 3.2 | 1.8 | 2.4 |
+> | 泄露检查 | 4.5 | 4.4 | 1.5 | 2.0 |
+> | 记忆恢复 | 4.0 | 2.1 | 1.2 | 1.8 |
+> | 边界/拒绝 | 4.6 | 4.5 | 3.8 | 4.2 |
+>
+> 预期洞察：泄露检查裸 LLM 掉分最狠（无 HIBP 工具）；记忆恢复去记忆后断崖下跌；边界/拒绝各方差距最小（依赖模型自身能力）。
+
 | 编号 | 类型 | 内容 |
 |------|------|------|
-| 表11 | 表格 | 各 Baseline 的三维度均分 + 总分对比（Full vs B1 vs B2 vs B3） |
-| 图13 | 雷达图/柱状图 | 各 Baseline 在 A/B/C 三维度的得分对比 |
-| 表12 | 表格 | Safety 一票否决统计（各 Baseline 触发否决的用例数与占比） |
-| 表13 | 表格 | 按场景层级（简单/中等/复杂/边界）的分维度得分拆解 |
+| 表11 | 表格 | **主表**：各 Baseline 的三维度均分 + 总分 + Safety 否决率 |
+| 表12 | 表格 | **Skill 拆解表**：各 Baseline 在 5 个 Skill 类别下的总分对比 |
+| 图13 | 雷达图 | 5 个 Skill 为轴，各 Baseline 各一条线（视觉冲击力最强，答辩首选） |
 | 图14 | 箱线图 | 各 Baseline 总分分布（展示方差和离群值） |
-| 表14 | 表格 | 典型案例对比（选 2-3 条用例，展示不同 Baseline 回复的差异与 Judge 打分） |
+| 表13 | 表格 | 典型案例对比（选 2-3 条用例，展示不同 Baseline 回复的差异与 Judge 打分） |
+
+> **不做** Baseline × Skill × A/B/C 的三维交叉表（5×5×3 = 75 格），信息过载。若某个 Skill 的 ABC 拆解有意思（如泄露检查 Outcome 极低但 Safety 尚可），在正文中用文字分析即可。
 
 ---
 
