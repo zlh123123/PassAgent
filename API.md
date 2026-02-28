@@ -2423,6 +2423,7 @@ components/chat/settings/
 - 正文简洁，完整的输入输出参数定义放附录 A 的 Function Schema 里
 
 ---
+```
 
 # API_v2 相比原始 API.md 的变更记录
 
@@ -2479,3 +2480,4 @@ components/chat/settings/
 
 29. **删除 `json_placeholder_ignore` 残留代码块**：编辑过程中遗留的无效标记
 ```
+
