@@ -8,14 +8,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 
-PROMPT_FILE = "LLMjudge.prompt"
-DEFAULT_INPUT = "data/test_cases.json"
-DEFAULT_OUTPUT = "results.json"
+ROOT_DIR = Path(__file__).parent
+EVAL_DIR = ROOT_DIR.parent
 
-
-def load_prompt_template() -> str:
-    path = Path(__file__).parent / PROMPT_FILE
-    return path.read_text(encoding="utf-8")
+PROMPT_FILE = ROOT_DIR / "LLMjudge.prompt"
+DEFAULT_INPUT = EVAL_DIR / "data" / "test_cases.json"
+DEFAULT_OUTPUT = ROOT_DIR / "results.json"
 
 
 def build_prompt(template: str, case: dict) -> str:
@@ -32,6 +30,8 @@ def call_judge(client: OpenAI, model: str, prompt: str) -> str:
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
         max_tokens=1024,
+        timeout=300,
+        
     )
     return resp.choices[0].message.content.strip()
 
@@ -66,8 +66,7 @@ def compute_total(parsed: dict) -> float | None:
 
 
 def main():
-    env_path = Path(__file__).parent / ".env"
-    load_dotenv(env_path)
+    load_dotenv(ROOT_DIR / ".env")
 
     api_key = os.environ.get("OPENAI_API_KEY", "")
     base_url = os.environ.get("BASE_URL", "")
@@ -77,13 +76,13 @@ def main():
         print("请在 .env 文件中设置 OPENAI_API_KEY")
         sys.exit(1)
 
-    input_file = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_INPUT
-    output_file = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_OUTPUT
+    input_file = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_INPUT
+    output_file = Path(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_OUTPUT
 
     client = OpenAI(base_url=base_url, api_key=api_key)
-    template = load_prompt_template()
+    template = PROMPT_FILE.read_text(encoding="utf-8")
 
-    cases = json.loads(Path(input_file).read_text(encoding="utf-8"))
+    cases = json.loads(input_file.read_text(encoding="utf-8"))
     results = []
 
     for i, case in enumerate(cases):
@@ -123,7 +122,7 @@ def main():
         "results": results,
     }
 
-    Path(output_file).write_text(
+    output_file.write_text(
         json.dumps(output, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
