@@ -76,7 +76,7 @@ export default function ChatLayout({
         onOpenSettings={() => setSettingsOpen(true)}
         loading={loading}
       />
-      <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</main>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
