@@ -10,6 +10,112 @@ import { Download } from "lucide-react";
 type ConvOption = "all" | "current";
 type ExportFormat = "json" | "csv" | "md";
 
+interface ExportMessage {
+  message_id: string;
+  content: string;
+  message_type: string;
+  created_at: string;
+}
+interface ExportSession {
+  session_id: string;
+  title: string;
+  created_at: string;
+  messages: ExportMessage[];
+}
+interface ExportMemory {
+  memory_id: string;
+  content: string;
+  memory_type: string;
+  source: string;
+  created_at: string;
+}
+interface ExportResults {
+  exported_at: string;
+  sessions?: ExportSession[];
+  memories?: ExportMemory[];
+  settings?: Record<string, unknown>;
+}
+
+function escapeCsvField(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function convertToCsv(data: ExportResults): string {
+  const lines: string[] = [];
+
+  // Messages table
+  if (data.sessions?.length) {
+    lines.push("session_id,session_title,message_id,message_type,content,created_at");
+    for (const s of data.sessions) {
+      for (const m of s.messages) {
+        lines.push(
+          [s.session_id, s.title, m.message_id, m.message_type, m.content, m.created_at]
+            .map((v) => escapeCsvField(String(v ?? "")))
+            .join(","),
+        );
+      }
+    }
+  }
+
+  // Memories table
+  if (data.memories?.length) {
+    lines.push(""); // blank separator
+    lines.push("memory_id,memory_type,source,content,created_at");
+    for (const m of data.memories) {
+      lines.push(
+        [m.memory_id, m.memory_type, m.source, m.content, m.created_at]
+          .map((v) => escapeCsvField(String(v ?? "")))
+          .join(","),
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function convertToMarkdown(data: ExportResults): string {
+  const parts: string[] = [`# PassAgent 数据导出\n\n导出时间：${data.exported_at}\n`];
+
+  if (data.sessions?.length) {
+    parts.push("## 对话记录\n");
+    for (const s of data.sessions) {
+      parts.push(`### ${s.title || "未命名会话"}\n`);
+      parts.push(`- 会话 ID：${s.session_id}`);
+      parts.push(`- 创建时间：${s.created_at}\n`);
+      for (const m of s.messages) {
+        const role = m.message_type === "user" ? "用户" : "助手";
+        parts.push(`**${role}**（${m.created_at}）\n`);
+        parts.push(`${m.content}\n`);
+      }
+      parts.push("---\n");
+    }
+  }
+
+  if (data.memories?.length) {
+    parts.push("## 用户记忆\n");
+    parts.push("| ID | 类型 | 来源 | 内容 | 创建时间 |");
+    parts.push("|---|---|---|---|---|");
+    for (const m of data.memories) {
+      const content = m.content.replace(/\|/g, "\\|").replace(/\n/g, " ");
+      parts.push(`| ${m.memory_id} | ${m.memory_type} | ${m.source} | ${content} | ${m.created_at} |`);
+    }
+    parts.push("");
+  }
+
+  if (data.settings) {
+    parts.push("## 用户设置\n");
+    for (const [k, v] of Object.entries(data.settings)) {
+      parts.push(`- **${k}**：${v}`);
+    }
+    parts.push("");
+  }
+
+  return parts.join("\n");
+}
+
 export function DataPage() {
   const pathname = usePathname();
   const match = pathname.match(/^\/chat\/(.+)$/);
@@ -66,7 +172,16 @@ export function DataPage() {
         csv: "text/csv",
         md: "text/markdown",
       };
-      const blob = new Blob([JSON.stringify(results, null, 2)], {
+      const exportData = results as ExportResults;
+      let content: string;
+      if (format === "csv") {
+        content = convertToCsv(exportData);
+      } else if (format === "md") {
+        content = convertToMarkdown(exportData);
+      } else {
+        content = JSON.stringify(results, null, 2);
+      }
+      const blob = new Blob([content], {
         type: mimeMap[format],
       });
       const url = URL.createObjectURL(blob);
