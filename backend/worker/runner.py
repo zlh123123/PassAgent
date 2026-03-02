@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from worker.queue import task_queue, ChatTask
 from database.connection import SessionLocal
+from database.models import User
 from services.session_service import save_message, get_messages
 from agent.graph import agent_graph
 from agent.memory.writer import extract_and_save_memories
@@ -67,6 +68,21 @@ async def _process_task(task: ChatTask):
         except Exception as e:
             logger.warning("预加载记忆失败: %s", e)
 
+        # 从 DB 读取用户生成偏好设置
+        gen_auto_mode = True
+        gen_security_weight = 0.5
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.user_id == task.user_id).first()
+            if user:
+                gen_auto_mode = bool(user.gen_auto_mode) if user.gen_auto_mode is not None else True
+                try:
+                    gen_security_weight = float(user.gen_security_weight) if user.gen_security_weight else 0.5
+                except (ValueError, TypeError):
+                    gen_security_weight = 0.5
+        finally:
+            db.close()
+
         # 构建初始 state 并调用 graph
         initial_state = {
             "messages": messages,
@@ -78,6 +94,8 @@ async def _process_task(task: ChatTask):
             "action_params": {},
             "uploaded_files": [],
             "loop_count": 0,
+            "gen_auto_mode": gen_auto_mode,
+            "gen_security_weight": gen_security_weight,
             "_event_queue": collecting_queue,
         }
 

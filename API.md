@@ -882,28 +882,23 @@ Response（JSON 格式）:
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
 | zxcvbn_check | 熵值、评分、破解时间 | password | score(0-4), guesses_log10, crack_time, feedback | zxcvbn-python |
-| charset_analyze | 字符组成分析 | password | length, has_upper, has_lower, has_digit, has_special, unique_ratio | 纯 Python |
-| keyboard_pattern_check | 键盘连续模式检测 | password | has_pattern, patterns | 纯 Python |
+| basic_analysis | 字符组成分析 + 重复模式检测（合并原 charset_analyze 和 repetition_check） | password | charset{}, repetition{}, risk_level | 纯 Python |
+| pattern_detect | 键盘模式 + 拼音组合 + 日期模式统一检测（合并原 keyboard_pattern_check、pinyin_check、date_pattern_check） | password | keyboard{}, pinyin{}, date{}, coverage, risk_level | 纯 Python + JSON |
 | weak_list_match | 弱口令库匹配 | password | in_top100, in_top1000, in_rockyou | 内存加载 |
-| repetition_check | 重复字符和序列检测 | password | max_repeat, has_sequence | 纯 Python |
-| pcfg_analyze | 结构模式分析 | password | structure, is_common_structure | PCFG |
-| passgpt_prob | 口令被猜中概率 | password | probability, rank_estimate | 微调模型(GPU) |
-| pass2rule | 口令易发生的hashcat规则变化 | password | rules | 微调模型(GPU) |
-| pinyin_check | 拼音组合检测 | password | has_pinyin, pinyin_words | pypinyin |
-| date_pattern_check | 日期模式检测 | password | has_date, date_formats_found | 正则 |
+| pcfg_analyze | PCFG 结构模式分析 | password | structure, is_common_structure | PCFG |
+| passgpt_prob | 口令被猜中概率（GPU 微调模型，待接入） | password | probability, rank_estimate | 微调模型(GPU) |
+| pass2rule | 口令易发生的 hashcat 规则变化（GPU 微调模型，待接入） | password | rules | 微调模型(GPU) |
 | personal_info_check | 结合记忆检测个人信息 | password, memories | contains_personal_info, matched_items | 字符串匹配 |
-| entropy_calculate | 信息熵计算 | password | entropy_bits, charset_size | 纯 Python |
 
 #### 4.4.2 口令生成类
 
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
-| multimodal_parse | 图片/音频转文本关键词 | file_path, file_type | keywords | Qwen-Omni(GPU) ，这个可以在想一下|
-| generate_password | 基于种子词变换生成口令 | seeds, constraints | candidates | 纯 Python |
-| passphrase_generate | 助记短语型口令 | word_count, separator | passphrase, entropy | 词表 |
-| pronounceable_generate | 可发音随机口令 | length | password | 音节表 |
-| fetch_site_policy | 获取网站密码策略 | site_name | min_length, required_chars | 规则 JSON |
-| strength_verify | 生成口令反向验证强度 | password | score, passed | zxcvbn + 阈值判断 |
+| generate_password | 基于种子词变换或纯随机生成安全口令 | seeds, constraints | candidates[], entropy | Python secrets 模块 |
+| passphrase_generate | 基于 xkcdpass/diceware 方法生成助记短语型口令 | word_count, separator | variants[], entropy | xkcdpass / 内置 EFF 词表 |
+| pronounceable_generate | 辅音-元音音节组合生成可发音随机口令 | length | password, syllables | 纯 Python |
+| fetch_site_policy | 获取网站密码策略（内置常见站点 + JSON 扩展） | site_name | min_length, max_length, required_chars | 内置策略 + site_policies.json |
+| multimodal_parse | 调用 Qwen-Omni 将图片/音频转文本关键词，作为生成素材 | file_path, file_type | keywords | Qwen-Omni(GPU) |
 
 口令生成的核心矛盾：安全性与可记忆性天然对立。安全性越高的密码（纯随机）越难记忆，越好记的密码（个人信息关联）越容易被攻击者猜到。
 
@@ -933,33 +928,31 @@ Response（JSON 格式）:
 | 🧠 偏好记 (β=0.7) | 种子词变换为主 | `generate_password(seeds, heavy)` + `passphrase_generate` |
 | 🧠 最好记 (β=0.9) | 助记短语/可发音 | `passphrase_generate` + `pronounceable_generate` |
 
-生成后安全性兜底：所有候选密码必须通过 `strength_verify`（score ≥ 2），未通过的自动淘汰，剩余候选交由用户选择。
+生成后安全性兜底：所有候选密码由 Planner 调用 `zxcvbn_check` 进行反向验证（score ≥ 2），未通过的自动淘汰，剩余候选交由用户选择。（不再使用独立的 strength_verify 工具，复用已有的 zxcvbn_check 即可。）
 
 #### 4.4.3 记忆恢复类
 
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
-| fragment_combine | 片段排列组合 | fragments, pattern | candidates | itertools |
-| common_variant_expand | 常见变体扩展 | base_list | expanded | 纯 Python |
-| rule_generate | hashcat 规则生成 | source, target_hint | rules | 微调模型(GPU) |
-| date_expand | 日期格式扩展 | year | variants | 纯 Python |
+| fragment_combine | 片段排列组合 + 自动检测年份并展开日期格式（合并原 date_expand） | fragments, pattern | candidates | itertools |
+| common_variant_expand | hashcat 规则子集变体扩展（大小写、leet speak、追加数字/符号、反转等） | base_list | expanded, rules_applied | 纯 Python |
 
 #### 4.4.4 泄露检查类
 
 | 工具名 | 说明 | 输入 | 输出 | 依赖 |
 |--------|------|------|------|------|
-| hibp_password_check | k-Anonymity 查密码泄露 | password | leaked, count | HIBP API |
-| hibp_email_check | 查邮箱关联泄露事件 | email | leaked, breaches | HIBP API |
-| breach_detail | 泄露事件详情 | breach_name | date, pwn_count, data_classes | HIBP API |
-| similar_leak_check | 常见变体批量查泄露 | password | variants_checked, any_leaked | 组合调用 |
+| hibp_password_check | k-Anonymity 查密码泄露 | password | leaked, count | HIBP Passwords API |
+| hibp_email_check | 通过 Hunter.io API 验证邮箱有效性并获取关联的个人/公司信息，评估邮箱暴露风险 | email | verification{}, enrichment{} | Hunter.io API（需要 HUNTER_API_KEY） |
+| breach_detail | 查询 HIBP 泄露事件。提供 breach_name 返回单个事件详情，不提供则列出全部已知泄露事件 | breach_name(可选), domain(可选) | breaches[] 或 breach{} | HIBP v3 Breaches API |
 
-> 所有可使用的口令泄露相关的API：
-> + 密码泄露查询：curl -s https://api.pwnedpasswords.com/range/00000 | head -5
-> + 全部泄露事件列表：curl -s "https://haveibeenpwned.com/api/v3/breaches" -H "User-Agent: PassAgent/1.0" | head -200
-> + 单个泄露事件详情：curl -s "https://haveibeenpwned.com/api/v3/breach/LinkedIn" -H "User-Agent: PassAgent/1.0"
-> + 所有泄露数据类型：curl -s "https://haveibeenpwned.com/api/v3/dataclasses" -H "User-Agent: PassAgent/1.0"
-> + 邮箱查询（待验证）：curl -s "https://emailrep.io/test@example.com" -H "User-Agent: PassAgent/1.0"
-> + 邮箱查询（待验证）：curl -s "https://api.hunter.io/v2/email-verifier?email=test@example.com&api_key=YOUR_KEY"（需要注册拿 Key：https://hunter.io/api）
+> 使用的外部 API：
+> + **HIBP Passwords API（免费，无需 Key）**：`GET https://api.pwnedpasswords.com/range/{prefix}` — k-Anonymity 密码泄露查询
+> + **HIBP Breaches API（免费，无需 Key）**：
+>   - `GET https://haveibeenpwned.com/api/v3/breaches` — 全部泄露事件列表（支持 `?domain=` 筛选）
+>   - `GET https://haveibeenpwned.com/api/v3/breach/{name}` — 单个泄露事件详情
+> + **Hunter.io API（需要注册获取 Key：https://hunter.io/api）**：
+>   - `GET https://api.hunter.io/v2/email-verifier?email=xxx&api_key=KEY` — 邮箱有效性验证
+>   - `GET https://api.hunter.io/v2/combined/find?email=xxx&api_key=KEY` — 邮箱关联人员与公司信息
 
 #### 4.4.5 图形口令类
 
@@ -1251,7 +1244,7 @@ Step 6  [retrieve_memory]      → PREFERENCE: "喜欢用#", CONSTRAINT: "16位"
 Step 7  [planner]              → 有了偏好，调生成
 Step 8  [generate_password]    → candidates=["Zly#2023_Secure!x", ...]
 Step 9  [planner]              → 验证生成的口令强度
-Step 10 [strength_verify]      → score=4, 通过
+Step 10 [zxcvbn_check]         → score=4, 通过
 Step 11 [planner]              → 信息足够，respond
 Step 12 [respond]              → 完整报告：强度分析 + 泄露情况 + 推荐新密码
 Step 13 [write_memory]         → 提取到 FACT: "常用 zly 作为密码基础"（非密码本身）
@@ -1372,43 +1365,36 @@ PassAgent/
 │   │   │   └── embedding.py                     # embedding 生成（SiliconFlow API）、余弦相似度
 │   │   └── tools/
 │   │       ├── __init__.py
-│   │       ├── definitions.py                   # 全部 27 个工具的 Function Calling Schema
+│   │       ├── definitions.py                   # 全部 19 个工具的 Function Calling Schema
 │   │       ├── strength/
 │   │       │   ├── __init__.py
 │   │       │   ├── zxcvbn_tool.py               # 熵值评估
-│   │       │   ├── charset_tool.py              # 字符组成分析
-│   │       │   ├── keyboard_tool.py             # 键盘模式检测
+│   │       │   ├── basic_analysis_tool.py        # 字符组成 + 重复模式（合并）
+│   │       │   ├── pattern_detect_tool.py        # 键盘模式 + 拼音 + 日期（合并）
 │   │       │   ├── weak_list_tool.py            # 弱口令库匹配
-│   │       │   ├── repetition_tool.py           # 重复字符和序列检测
 │   │       │   ├── pcfg_tool.py                 # 结构模式分析
-│   │       │   ├── passgpt_tool.py              # 口令概率（调模型服务）
-│   │       │   ├── pass2rule_tool.py            # 口令规则生成（调模型服务）
-│   │       │   ├── pinyin_tool.py               # 拼音组合检测
-│   │       │   ├── date_tool.py                 # 日期模式检测
+│   │       │   ├── passgpt_tool.py              # 口令概率（调模型服务，待接入）
+│   │       │   ├── pass2rule_tool.py            # 口令规则生成（调模型服务，待接入）
 │   │       │   └── personal_info_tool.py        # 结合记忆检测个人信息
 │   │       ├── generation/
 │   │       │   ├── __init__.py
-│   │       │   ├── multimodal_tool.py           # 图片/音频转文本（调 Qwen-Omni）
-│   │       │   ├── generate_tool.py             # 种子词变换生成口令
-│   │       │   ├── passphrase_tool.py           # 助记短语型口令
-│   │       │   ├── pronounceable_tool.py        # 可发音随机口令
-│   │       │   ├── site_policy_tool.py          # 网站密码策略
-│   │       │   └── strength_verify_tool.py      # 生成口令反向验证强度
+│   │       │   ├── generate_tool.py             # 种子词变换/纯随机生成口令（secrets）
+│   │       │   ├── passphrase_tool.py           # 助记短语型口令（xkcdpass/内置词表）
+│   │       │   ├── pronounceable_tool.py        # 可发音随机口令（CV音节）
+│   │       │   ├── site_policy_tool.py          # 网站密码策略（内置 + JSON）
+│   │       │   └── multimodal_tool.py           # 图片/音频转文本（调 Qwen-Omni）
 │   │       ├── recovery/
 │   │       │   ├── __init__.py
-│   │       │   ├── fragment_tool.py             # 片段排列组合
-│   │       │   ├── variant_tool.py              # 常见变体扩展
-│   │       │   ├── rule_tool.py                 # hashcat 规则生成（调模型服务）
-│   │       │   └── date_expand_tool.py          # 日期格式扩展
+│   │       │   ├── fragment_tool.py             # 片段排列组合 + 日期展开
+│   │       │   └── variant_tool.py              # hashcat 规则子集变体扩展
 │   │       ├── leak/
 │   │       │   ├── __init__.py
 │   │       │   ├── hibp_password_tool.py        # k-Anonymity 查密码泄露
-│   │       │   ├── hibp_email_tool.py           # 查邮箱关联泄露事件
-│   │       │   ├── breach_detail_tool.py        # 泄露事件详情
-│   │       │   └── similar_leak_tool.py         # 常见变体批量查泄露
+│   │       │   ├── hibp_email_tool.py           # Hunter.io 邮箱验证与信息查询
+│   │       │   └── breach_detail_tool.py        # HIBP 泄露事件查询
 │   │       └── graphical/
 │   │           ├── __init__.py
-│   │           └── graphical_mode_tool.py       # 唤起前端图形口令组件
+│   │           └── graphical_mode_tool.py       # 唤起前端图形口令组件（SSE 事件驱动）
 │   │
 │   ├── utils/
 │   │   ├── __init__.py
@@ -2290,7 +2276,7 @@ components/chat/settings/
 
 | 编号 | 类型 | 内容 |
 |------|------|------|
-| 表3 | 表格 | 27 个工具总览表（名称、所属 skill、功能简述、输入、输出） |
+| 表3 | 表格 | 19 个工具总览表（名称、所属 skill、功能简述、输入、输出） |
 | 公式4 | 公式 | PassGPT 对数概率计算 $\log P(p) = \sum \log P(c_t \mid c_{<t})$ |
 | 表4 | 表格 | Pass2Rule 微调模型评估结果（从已发表论文中引用） |
 | 表5 | 表格 | Hashcat 规则生成微调模型评估结果 |
@@ -2614,22 +2600,19 @@ C: <分数> | <理由>
 序号 & 工具名称 & 功能简述 \\
 \midrule
 1 & zxcvbn\_check & 基于zxcvbn库的熵值评估与猜测次数估计 \\
-2 & charset\_analyze & 字符组成分析（大小写、数字、特殊符号占比） \\
-3 & weak\_list\_match & 弱口令库匹配（Top100/Top1000/RockYou） \\
-4 & keyboard\_pattern\_check & 键盘模式检测（连续键位、行列模式） \\
-5 & repetition\_check & 重复字符与子串检测 \\
-6 & pinyin\_check & 拼音组合检测 \\
-7 & date\_pattern\_check & 日期模式检测 \\
-8 & pcfg\_analyze & PCFG结构模式分析 \\
-9 & pass2rule & 基于微调模型的规则变换分析 \\
-10 & passgpt\_prob & 基于PassGPT的概率估计 \\
-11 & personal\_info\_check & 结合用户记忆的个人信息关联检测 \\
+2 & basic\_analysis & 字符组成分析与重复模式检测（合并原 charset\_analyze 和 repetition\_check） \\
+3 & pattern\_detect & 键盘模式、拼音组合、日期模式统一检测（合并原 keyboard\_pattern\_check、pinyin\_check、date\_pattern\_check） \\
+4 & weak\_list\_match & 弱口令库匹配（Top100/Top1000/RockYou） \\
+5 & pcfg\_analyze & PCFG结构模式分析 \\
+6 & passgpt\_prob & 基于PassGPT微调模型的概率估计（待接入） \\
+7 & pass2rule & 基于Pass2Rule模型的规则变换分析（待接入） \\
+8 & personal\_info\_check & 结合用户记忆的个人信息关联检测 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 
-其他四个 skill 同理，口令生成 6 行、记忆恢复 4 行、泄露检查 4 行、图形口令 1 行，各自放在对应小节里。
+其他四个 skill 同理，口令生成 5 行、记忆恢复 2 行、泄露检查 3 行、图形口令 1 行，各自放在对应小节里。
 
 这样做的好处：
 - 每张表不超过 11 行，排版舒服
@@ -2693,6 +2676,25 @@ C: <分数> | <理由>
 ## 八、删除残留
 
 29. **删除 `json_placeholder_ignore` 残留代码块**：编辑过程中遗留的无效标记
+
+## 九、工具集重构（v2.1）
+
+30. **合并强度评估工具**：`charset_analyze` + `repetition_check` → `basic_analysis`（字符组成 + 重复模式合并为一次调用）；`keyboard_pattern_check` + `pinyin_check` + `date_pattern_check` → `pattern_detect`（三种模式统一检测）
+31. **删除 `entropy_calculate`**：功能与 `zxcvbn_check` 重叠，熵值信息已包含在 zxcvbn 输出中
+32. **删除 `strength_verify`**：不再使用独立的反向验证工具，生成后由 Planner 调用 `zxcvbn_check` 反向验证（复用已有工具）
+33. **删除 `similar_leak_check`**：功能可由 Planner 组合 `common_variant_expand` + `hibp_password_check` 实现，无需专用工具
+34. **删除 `rule_generate`**（记忆恢复类）和 `date_expand`**：`rule_generate` 功能由 `common_variant_expand`（hashcat 规则子集 Python 实现）替代；`date_expand` 合并入 `fragment_combine`（自动检测年份片段并展开日期格式）
+35. **`hibp_email_check` 改用 Hunter.io API**：从 HIBP（需付费 Key 查邮箱泄露）改为 Hunter.io（邮箱验证 + 信息富化），新增 `HUNTER_API_KEY` 环境变量
+36. **`breach_detail` 增强**：支持两种模式——提供 `breach_name` 返回单个事件详情，不提供则列出全部已知泄露事件（支持 `domain` 参数筛选）
+37. **口令生成工具实现**：`generate_password` 采用 Python `secrets` 模块（CSPRNG）；`passphrase_generate` 采用 `xkcdpass` 库 + 内置 EFF 词表；`pronounceable_generate` 采用 CVC 辅音-元音音节组合；`fetch_site_policy` 内置 GitHub/Google/Apple/微信/Steam 等常见站点策略
+38. **口令恢复工具实现**：`fragment_combine` 实现全排列 + 分隔符组合 + 笛卡尔积（含日期展开），限制最大 200 候选；`common_variant_expand` 实现 hashcat 规则子集（capitalize/leet/suffix/prefix/reverse/duplicate/truncate 等 10+ 条规则）
+39. **`multimodal_parse` 实现**：调用 Qwen-Omni 多模态模型，支持图片（image_url）和音频（input_audio）两种输入，新增 `OMNI_BASE_URL`、`OMNI_MODEL` 环境变量
+40. **`graphical_mode` 重设计**：从前端独立组件改为 SSE 事件驱动模式——Agent 通过此工具推送 `graphical_start` 事件唤起前端组件，用户完成后结果 POST 回后端
+41. **Planner 提示词更新**：工具分类从 26 个调整为 19 个，新增「生成后验证」决策规则（调 `zxcvbn_check` 替代已删除的 `strength_verify`），修正「不重复调用」规则（相同参数不重复，不同参数可多次调用）
+42. **工具总数**：从 26 个精简为 19 个（+ `respond` 和 `retrieve_memory` 共 21 个 Function Calling 定义）
+43. **新增环境变量**：`HUNTER_API_KEY`（Hunter.io API Key）、`OMNI_BASE_URL`（多模态模型地址）、`OMNI_MODEL`（多模态模型名）
+44. **新增依赖**：`xkcdpass`（passphrase 生成库，有内置 fallback 词表）
+45. **文件树变更**：删除 `charset_tool.py`、`repetition_tool.py`、`keyboard_tool.py`、`pinyin_tool.py`、`date_tool.py`、`strength_verify_tool.py`、`similar_leak_tool.py`、`rule_tool.py`、`date_expand_tool.py`；新增 `basic_analysis_tool.py`、`pattern_detect_tool.py`、`pronounceable_tool.py`
 
 
 

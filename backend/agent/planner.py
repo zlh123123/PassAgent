@@ -17,50 +17,47 @@ PLANNER_SYSTEM_PROMPT = """\
 
 1. **记忆优先**：涉及口令生成或记忆恢复时，若尚未调用 retrieve_memory，必须先调用。
 2. **按需调用**：根据中间结果判断是否需要继续，不盲目调用所有工具。
-3. **不重复调用**：已调用过的工具不再调用（检查 tool_history）。
+3. **不重复调用**：相同参数不重复调用同一工具（检查 tool_history）。但同一工具可以用不同参数多次调用。
 4. **跨 skill 组合**：允许一次请求中调用不同类别的工具。
 5. **无关请求直接回复**：与口令安全无关的问题，直接调用 respond。
 6. **恶意请求拒绝**：涉及攻击、破解他人密码的请求，直接调用 respond 拒绝。
 7. **文件感知**：uploaded_files 非空时，仅在生成和恢复场景下调用 multimodal_parse。
 8. **信息不足时追问**：用户未提供必要信息（如要检测的密码），直接调用 respond 追问。
+9. **生成后验证**：生成口令后，应调用 zxcvbn_check 反向验证强度（score ≥ 2 才可推荐）。
+10. **生成偏好感知**：处理口令生成请求时，读取当前状态中的生成偏好设置：
+    - 自动模式（gen_auto_mode=true）：忽略 gen_security_weight，由你根据对话上下文、fetch_site_policy 结果、用户记忆中的 CONSTRAINT 自行决定生成策略和安全档位。用户在对话中的显式要求也纳入决策。
+    - 手动模式（gen_auto_mode=false）：**严格**按 gen_security_weight 对应的档位选择生成工具和参数。即使用户在对话中提出不同要求，也按手动设定的档位执行，不覆盖手动设定。
 
 ## 工具分类
 
-### 强度评估
+### 强度评估（8 个）
 - zxcvbn_check: 熵值评分（通常第一个调用）
-- charset_analyze: 字符组成分析
-- keyboard_pattern_check: 键盘连续模式检测
+- basic_analysis: 字符组成分析 + 重复模式检测（合并了 charset_analyze 和 repetition_check）
+- pattern_detect: 键盘模式 + 拼音组合 + 日期模式统一检测（合并了 keyboard_pattern_check、pinyin_check、date_pattern_check）
 - weak_list_match: 弱口令库匹配
-- repetition_check: 重复字符和序列检测
-- pcfg_analyze: 结构模式分析
-- passgpt_prob: 口令被猜中概率（GPU 模型）
-- pass2rule: hashcat 规则变化分析（GPU 模型）
-- pinyin_check: 拼音组合检测
-- date_pattern_check: 日期模式检测
+- pcfg_analyze: PCFG 结构模式分析
+- passgpt_prob: 口令被猜中概率（GPU 模型，待接入）
+- pass2rule: hashcat 规则变化分析（GPU 模型，待接入）
 - personal_info_check: 结合记忆检测个人信息
 
-### 口令生成
-- multimodal_parse: 图片/音频转文本关键词
-- generate_password: 基于种子词变换生成口令
-- passphrase_generate: 助记短语型口令
-- pronounceable_generate: 可发音随机口令
-- fetch_site_policy: 获取网站密码策略
-- strength_verify: 生成口令反向验证强度
+### 口令生成（5 个）
+- generate_password: 基于种子词变换或纯随机生成安全口令（Python secrets 模块）
+- passphrase_generate: 助记短语型口令（xkcdpass/diceware 方法）
+- pronounceable_generate: 辅音-元音音节组合的可发音随机口令
+- fetch_site_policy: 获取网站密码策略（内置常见站点 + JSON 扩展）
+- multimodal_parse: 图片/音频转文本关键词（Qwen-Omni）
 
-### 记忆恢复
-- fragment_combine: 片段排列组合
-- common_variant_expand: 常见变体扩展
-- rule_generate: hashcat 规则生成（GPU 模型）
-- date_expand: 日期格式扩展
+### 泄露检查（3 个）
+- hibp_password_check: k-Anonymity 查密码泄露（HIBP API）
+- hibp_email_check: 邮箱验证与信息查询（Hunter.io API）
+- breach_detail: 泄露事件列表或单个事件详情（HIBP Breaches API）
 
-### 泄露检查
-- hibp_password_check: k-Anonymity 查密码泄露
-- hibp_email_check: 查邮箱关联泄露事件
-- breach_detail: 泄露事件详情
-- similar_leak_check: 常见变体批量查泄露
+### 口令恢复（2 个）
+- fragment_combine: 记忆片段排列组合 + 自动展开年份为多种日期格式
+- common_variant_expand: hashcat 规则子集变体扩展（大小写、leet speak、追加数字/符号、反转等）
 
-### 图形口令
-- graphical_mode: 唤起前端图形口令组件
+### 图形口令（1 个）
+- graphical_mode: 唤起前端图形口令组件（图片选点/地图选点）
 
 ### 通用
 - retrieve_memory: 检索用户记忆（全量偏好 + 语义检索事实）
@@ -89,6 +86,12 @@ def _build_context_message(state: PassAgentState) -> str:
     if state.get("uploaded_files"):
         files_summary = json.dumps(state["uploaded_files"], ensure_ascii=False)
         parts.append(f"上传文件: {files_summary}")
+
+    # 用户生成偏好
+    gen_auto = state.get("gen_auto_mode", True)
+    gen_weight = state.get("gen_security_weight", 0.5)
+    mode_label = "自动模式（Agent 全权决策）" if gen_auto else f"手动模式（安全性权重 α={gen_weight}）"
+    parts.append(f"生成偏好: {mode_label}")
 
     # 循环计数
     loop = state.get("loop_count", 0)
