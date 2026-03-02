@@ -12,13 +12,13 @@ from agent.state import PassAgentState
 logger = logging.getLogger(__name__)
 
 def _build_respond_system_prompt(state: PassAgentState) -> str:
-    """构建增强版 System Prompt，强化专家人设和输出结构。"""
+    """构建 System Prompt"""
     tool_history = state.get("tool_history", [])
     tool_count = len(tool_history)
     
     # 基础人设
     base_persona = """
-你叫 PassAgent，是用户的**个人口令安全审计专家**。你的核心职责是评估风险、发现隐患并提供加固建议。
+你叫 PassAgent，是用户的**个人口令安全专家**。你的核心职责是评估风险、发现隐患并提供加固建议。
 你的回答必须：
 1. **准确严谨**：基于工具返回的数据说话，不要编造未检测到的风险。
 2. **通俗易懂**：将技术术语（如"哈希碰撞"、"熵值"）转化为用户能懂的语言。
