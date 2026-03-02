@@ -254,14 +254,15 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "multimodal_parse",
-            "description": "调用 Qwen-Omni 将上传的图片/音频文件转为文本关键词，作为口令生成素材。仅在有上传文件时调用。",
+            "description": "调用 Qwen3-Omni 将上传的图片/音频文件转为文本关键词，作为口令生成素材。仅在有上传文件时调用。解析结果会自动回写到 UploadedFile.extracted_text。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "文件路径"},
-                    "file_type": {"type": "string", "description": "MIME 类型"},
+                    "file_id": {"type": "string", "description": "文件 ID（从 uploaded_files 中获取）"},
+                    "file_path": {"type": "string", "description": "文件路径（从 uploaded_files 中获取）"},
+                    "file_type": {"type": "string", "description": "MIME 类型（从 uploaded_files 中获取）"},
                 },
-                "required": ["file_path", "file_type"],
+                "required": ["file_id", "file_path", "file_type"],
             },
         },
     },

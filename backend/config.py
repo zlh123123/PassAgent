@@ -30,9 +30,9 @@ LLM_MODEL = os.getenv("LLM_MODEL", "Qwen2.5-32B-Instruct-GPTQ-Int4")
 EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1")
 EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
 
-# --- 多模态模型（Qwen-Omni） ---
-OMNI_BASE_URL = os.getenv("OMNI_BASE_URL", LLM_BASE_URL)
-OMNI_MODEL = os.getenv("OMNI_MODEL", "Qwen2.5-Omni-7B")
+# --- 多模态模型（SiliconFlow Qwen3-Omni） ---
+OMNI_BASE_URL = os.getenv("OMNI_BASE_URL", "https://api.siliconflow.cn/v1")
+OMNI_MODEL = os.getenv("OMNI_MODEL", "Qwen/Qwen3-Omni-30B-A3B-Captioner")
 
 # --- Hunter.io（邮箱验证与信息查询） ---
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY", "")

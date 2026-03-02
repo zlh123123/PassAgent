@@ -23,7 +23,7 @@ PLANNER_SYSTEM_PROMPT = """\
 6. **恶意请求拒绝**：涉及攻击、破解他人密码的请求，直接调用 respond 拒绝。
 7. **文件感知**：uploaded_files 非空时，仅在生成和恢复场景下调用 multimodal_parse。
 8. **信息不足时追问**：用户未提供必要信息（如要检测的密码），直接调用 respond 追问。
-9. **生成后验证**：生成口令后，应调用 zxcvbn_check 反向验证强度（score ≥ 2 才可推荐）。
+9. **生成后验证**：生成口令后，应调用 口令强度评估 反向验证强度。
 10. **生成偏好感知**：处理口令生成请求时，读取当前状态中的生成偏好设置：
     - 自动模式（gen_auto_mode=true）：忽略 gen_security_weight，由你根据对话上下文、fetch_site_policy 结果、用户记忆中的 CONSTRAINT 自行决定生成策略和安全档位。用户在对话中的显式要求也纳入决策。
     - 手动模式（gen_auto_mode=false）：**严格**按 gen_security_weight 对应的档位选择生成工具和参数。即使用户在对话中提出不同要求，也按手动设定的档位执行，不覆盖手动设定。

@@ -1,11 +1,12 @@
-"""multimodal_parse 工具：调用 Qwen-Omni 将上传的图片/音频转为文本关键词
+"""multimodal_parse 工具：调用 SiliconFlow Qwen3-Omni 将上传的图片/音频转为文本关键词
 
-通过 OpenAI 兼容 API 调用 vLLM 部署的 Qwen-Omni-7B 模型，
-从图片或音频中提取可用于口令生成的关键词。
+通过 SiliconFlow OpenAI 兼容 API 调用 Qwen3-Omni-30B-A3B-Captioner 模型，
+从图片或音频中提取可用于口令生成的关键词，并将解析结果回写 UploadedFile.extracted_text。
 """
 from __future__ import annotations
 
 import base64
+import logging
 import mimetypes
 import os
 
@@ -13,18 +14,21 @@ import httpx
 
 from agent.graph import register_tool
 from agent.state import PassAgentState
-from config import LLM_BASE_URL, LLM_API_KEY
+from config import OMNI_BASE_URL, OMNI_MODEL, EMBEDDING_API_KEY
 
-# Qwen-Omni 模型名（按需加载时使用，可能和主模型不同）
-_OMNI_MODEL = os.getenv("OMNI_MODEL", "Qwen2.5-Omni-7B-Instruct")
-_TIMEOUT = 60  # 多模态推理较慢
+logger = logging.getLogger(__name__)
 
-_EXTRACT_PROMPT = """你是口令生成助手。请从以下内容中提取 5-10 个有意义的关键词或短语，
-这些关键词将作为口令生成的种子素材。要求：
-1. 关键词应该具有辨识度和个人关联性
-2. 包括具体的事物名称、地点、颜色、情感等
-3. 每个关键词用单独一行输出
-4. 只输出关键词列表，不要其他解释"""
+# SiliconFlow API（与 Embedding 共用同一平台的 Key）
+_API_BASE = OMNI_BASE_URL  # https://api.siliconflow.cn/v1
+_API_KEY = EMBEDDING_API_KEY
+_MODEL = OMNI_MODEL  # Qwen/Qwen3-Omni-30B-A3B-Captioner
+_TIMEOUT = 90  # 多模态推理较慢，给足时间
+
+_EXTRACT_PROMPT = """You are a passphrase generation assistant. Please extract 5-10 meaningful keywords or phrases from the following content. These keywords will be used as seed material for passphrase generation. Requirements:
+1. Keywords should be distinctive and personally relevant
+2. Include specific object names, locations, colors, emotions, etc.
+3. Output each keyword on a separate line
+4. Only output the keyword list, no other explanations"""
 
 
 def _file_to_base64(file_path: str) -> str:
@@ -34,11 +38,12 @@ def _file_to_base64(file_path: str) -> str:
 
 
 def _build_messages(file_path: str, file_type: str) -> list[dict]:
-    """根据文件类型构建多模态消息。"""
+    """根据文件类型构建 SiliconFlow Qwen3-Omni 兼容的多模态消息。"""
     mime = file_type or mimetypes.guess_type(file_path)[0] or "application/octet-stream"
     b64 = _file_to_base64(file_path)
 
     if mime.startswith("image/"):
+        # SiliconFlow VLM 格式：image_url
         return [
             {
                 "role": "user",
@@ -52,13 +57,18 @@ def _build_messages(file_path: str, file_type: str) -> list[dict]:
             }
         ]
     elif mime.startswith("audio/"):
+        # SiliconFlow Qwen3-Omni Audio 格式：input_audio
+        fmt = mime.split("/")[-1]
+        # 统一格式名：mpeg→mp3
+        if fmt == "mpeg":
+            fmt = "mp3"
         return [
             {
                 "role": "user",
                 "content": [
                     {
                         "type": "input_audio",
-                        "input_audio": {"data": b64, "format": mime.split("/")[-1]},
+                        "input_audio": {"data": b64, "format": fmt},
                     },
                     {"type": "text", "text": _EXTRACT_PROMPT},
                 ],
@@ -69,7 +79,11 @@ def _build_messages(file_path: str, file_type: str) -> list[dict]:
 
 
 async def parse_multimodal(file_path: str, file_type: str) -> dict:
-    """调用多模态模型提取关键词。"""
+    """调用 SiliconFlow Qwen3-Omni 多模态模型提取关键词。
+
+    Returns:
+        {"keywords": [...], "raw_response": "...", "file_type": "..."}
+    """
     if not os.path.exists(file_path):
         return {"error": f"文件不存在: {file_path}", "keywords": []}
 
@@ -77,15 +91,16 @@ async def parse_multimodal(file_path: str, file_type: str) -> dict:
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            f"{LLM_BASE_URL}/chat/completions",
+            f"{_API_BASE}/chat/completions",
             json={
-                "model": _OMNI_MODEL,
+                "model": _MODEL,
                 "messages": messages,
                 "max_tokens": 512,
                 "temperature": 0.3,
+                "top_p": 0.7,
             },
             headers={
-                "Authorization": f"Bearer {LLM_API_KEY}",
+                "Authorization": f"Bearer {_API_KEY}",
                 "Content-Type": "application/json",
             },
             timeout=_TIMEOUT,
@@ -94,8 +109,11 @@ async def parse_multimodal(file_path: str, file_type: str) -> dict:
         data = resp.json()
 
     content = data["choices"][0]["message"]["content"]
-    # 解析关键词（每行一个）
-    keywords = [line.strip().lstrip("0123456789.-、） ") for line in content.strip().splitlines()]
+    # 解析关键词（每行一个，去掉序号前缀）
+    keywords = [
+        line.strip().lstrip("0123456789.-) ")
+        for line in content.strip().splitlines()
+    ]
     keywords = [k for k in keywords if k and len(k) < 50]
 
     return {
@@ -105,12 +123,31 @@ async def parse_multimodal(file_path: str, file_type: str) -> dict:
     }
 
 
+def _save_extracted_text(file_id: str, extracted_text: str) -> None:
+    """将解析结果回写到 UploadedFile.extracted_text（同步 DB 操作）。"""
+    from database.connection import SessionLocal
+    from database.models import UploadedFile
+
+    db = SessionLocal()
+    try:
+        record = db.query(UploadedFile).filter(UploadedFile.file_id == file_id).first()
+        if record:
+            record.extracted_text = extracted_text
+            db.commit()
+    except Exception as e:
+        logger.warning("回写 extracted_text 失败 (file_id=%s): %s", file_id, e)
+        db.rollback()
+    finally:
+        db.close()
+
+
 @register_tool("multimodal_parse")
 async def multimodal_parse_tool(state: PassAgentState) -> dict:
-    """将上传的图片/音频文件转为文本关键词。"""
+    """将上传的图片/音频文件转为文本关键词，并回写 extracted_text 到数据库。"""
     params = state.get("action_params", {})
     file_path = params.get("file_path", "")
     file_type = params.get("file_type", "")
+    file_id = params.get("file_id", "")
 
     try:
         result = await parse_multimodal(file_path, file_type)
@@ -120,5 +157,10 @@ async def multimodal_parse_tool(state: PassAgentState) -> dict:
         result = {"keywords": [], "error": f"网络请求失败: {str(e)}"}
     except ValueError as e:
         result = {"keywords": [], "error": str(e)}
+
+    # 将原始解析结果回写到 UploadedFile.extracted_text
+    if file_id and "error" not in result:
+        extracted = result.get("raw_response", "")
+        _save_extracted_text(file_id, extracted)
 
     return {"_tool_result": result}
