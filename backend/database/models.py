@@ -108,6 +108,9 @@ class UserMemory(Base):
     memory_type = Column(Text, nullable=False)  # PREFERENCE / FACT / CONSTRAINT
     source = Column(Text, default="auto")  # auto / manual
     embedding = Column(LargeBinary)  # 文本向量，用于语义检索
+    access_count = Column(Integer, default=0)  # 被检索命中次数
+    is_stale = Column(Integer, default=0)  # 0=正常, 1=待确认（超过90天未访问）
+    last_accessed_at = Column(Text)  # ISO 时间戳，每次检索命中时刷新
     created_at = Column(Text, server_default="CURRENT_TIMESTAMP")
 
     # 关系

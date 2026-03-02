@@ -22,10 +22,28 @@ def _migrate_user_columns():
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"))
 
 
+def _migrate_memory_columns():
+    """为 user_memories 表添加 last_accessed_at / access_count / is_stale 列"""
+    new_columns = {
+        "last_accessed_at": "TEXT",
+        "access_count": "INTEGER DEFAULT 0",
+        "is_stale": "INTEGER DEFAULT 0",
+    }
+    insp = inspect(engine)
+    if "user_memories" not in insp.get_table_names():
+        return
+    existing = {col["name"] for col in insp.get_columns("user_memories")}
+    with engine.begin() as conn:
+        for col_name, col_def in new_columns.items():
+            if col_name not in existing:
+                conn.execute(text(f"ALTER TABLE user_memories ADD COLUMN {col_name} {col_def}"))
+
+
 def init_database():
     """创建所有表"""
     Base.metadata.create_all(bind=engine)
     _migrate_user_columns()
+    _migrate_memory_columns()
     print("数据库表创建完成")
 
 

@@ -9,6 +9,9 @@ class MemoryResponse(BaseModel):
     memory_type: str
     source: str
     created_at: str
+    is_stale: bool = False
+    access_count: int = 0
+    last_accessed_at: Optional[str] = None
 
 
 # front -> back: 创建记忆

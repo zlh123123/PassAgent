@@ -1,4 +1,11 @@
-"""记忆写入：从对话中自动提取记忆并持久化"""
+"""记忆写入：从对话中自动提取记忆并持久化
+
+实现：
+- LLM 提取 → embedding → 语义冲突检测 → 存 DB
+- 语义去重（sim > 0.92 跳过）
+- 冲突检测（0.85 < sim ≤ 0.92 替换旧记忆）
+- LRU 淘汰（每用户最多 200 条，超限按 last_accessed_at 淘汰）
+"""
 from __future__ import annotations
 
 import json
@@ -13,7 +20,18 @@ logger = logging.getLogger(__name__)
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from database.models import UserMemory
-from agent.memory.embedding import get_embedding, embedding_to_bytes
+from agent.memory.embedding import (
+    get_embedding,
+    embedding_to_bytes,
+    bytes_to_embedding,
+    cosine_similarity,
+)
+
+# 每用户最大记忆条数
+MAX_MEMORIES_PER_USER = 200
+# 语义相似度阈值
+DEDUP_THRESHOLD = 0.92      # sim > 0.92 → 视为重复，跳过写入
+CONFLICT_THRESHOLD = 0.85   # 0.85 < sim ≤ 0.92 → 视为冲突，替换旧记忆
 
 EXTRACT_PROMPT = """\
 你是一个记忆提取器。从用户的对话中提取值得长期记住的个人信息。
@@ -37,6 +55,63 @@ EXTRACT_PROMPT = """\
 如果没有可提取的记忆，返回 []"""
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _find_semantic_match(
+    new_vec: list[float],
+    existing: list[UserMemory],
+) -> tuple[str, UserMemory | None]:
+    """在同类型已有记忆中查找语义最相似的。
+
+    Returns:
+        ("duplicate", mem) — sim > DEDUP_THRESHOLD，应跳过
+        ("conflict", mem)  — CONFLICT_THRESHOLD < sim ≤ DEDUP_THRESHOLD，应替换
+        ("new", None)      — 无冲突，正常写入
+    """
+    best_sim = 0.0
+    best_mem: UserMemory | None = None
+
+    for m in existing:
+        if not m.embedding:
+            continue
+        mem_vec = bytes_to_embedding(m.embedding)
+        sim = cosine_similarity(new_vec, mem_vec)
+        if sim > best_sim:
+            best_sim = sim
+            best_mem = m
+
+    if best_sim > DEDUP_THRESHOLD:
+        return "duplicate", best_mem
+    if best_sim > CONFLICT_THRESHOLD:
+        return "conflict", best_mem
+    return "new", None
+
+
+def _evict_lru(db: DBSession, user_id: str) -> None:
+    """当用户记忆数超过上限时，按 LRU 淘汰 last_accessed_at 最早的记忆。"""
+    count = db.query(UserMemory).filter(UserMemory.user_id == user_id).count()
+    if count <= MAX_MEMORIES_PER_USER:
+        return
+
+    overflow = count - MAX_MEMORIES_PER_USER
+    # last_accessed_at 为 NULL 的排在最前面（从未被访问过的最先淘汰）
+    oldest = (
+        db.query(UserMemory)
+        .filter(UserMemory.user_id == user_id)
+        .order_by(
+            UserMemory.last_accessed_at.is_(None).desc(),
+            UserMemory.last_accessed_at.asc(),
+        )
+        .limit(overflow)
+        .all()
+    )
+    for m in oldest:
+        db.delete(m)
+    logger.info("LRU 淘汰 %d 条记忆 (user=%s)", len(oldest), user_id)
+
+
 async def extract_and_save_memories(
     db: DBSession,
     user_id: str,
@@ -45,8 +120,17 @@ async def extract_and_save_memories(
 ) -> list[dict]:
     """从一轮对话中提取记忆并保存到数据库。
 
+    流程：
+    1. LLM 提取候选记忆
+    2. 对每条候选生成 embedding
+    3. 在同类型已有记忆中做语义匹配：
+       - sim > 0.92 → 跳过（重复）
+       - 0.85 < sim ≤ 0.92 → 替换旧记忆（冲突，Last Write Wins）
+       - sim ≤ 0.85 → 新增
+    4. 检查并执行 LRU 淘汰
+
     Returns:
-        新保存的记忆列表
+        新保存/更新的记忆列表
     """
     client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
@@ -76,31 +160,77 @@ async def extract_and_save_memories(
     if not isinstance(extracted, list) or not extracted:
         return []
 
+    # 预加载该用户所有记忆（用于冲突检测）
+    all_memories = (
+        db.query(UserMemory)
+        .filter(UserMemory.user_id == user_id)
+        .all()
+    )
+    # 按类型分组
+    memories_by_type: dict[str, list[UserMemory]] = {
+        "PREFERENCE": [],
+        "FACT": [],
+        "CONSTRAINT": [],
+    }
+    for m in all_memories:
+        if m.memory_type in memories_by_type:
+            memories_by_type[m.memory_type].append(m)
+
+    now = _now_iso()
     saved: list[dict] = []
+
     for item in extracted:
         content = item.get("content", "").strip()
         memory_type = item.get("memory_type", "FACT")
         if not content or memory_type not in ("PREFERENCE", "FACT", "CONSTRAINT"):
             continue
 
-        # 去重：相同内容不重复存储
-        exists = (
-            db.query(UserMemory)
-            .filter(
-                UserMemory.user_id == user_id,
-                UserMemory.content == content,
-            )
-            .first()
+        # 精确去重（兜底）
+        exists_exact = any(
+            m.content == content for m in memories_by_type.get(memory_type, [])
         )
-        if exists:
+        if exists_exact:
             continue
 
-        memory_id = str(uuid.uuid4())
-
-        # 生成 embedding（异步，失败不阻塞）
+        # 生成 embedding
         vec = await get_embedding(content)
         emb_bytes = embedding_to_bytes(vec) if vec else None
 
+        # 语义冲突检测
+        if vec is not None:
+            match_type, matched_mem = _find_semantic_match(
+                vec, memories_by_type.get(memory_type, [])
+            )
+        else:
+            match_type, matched_mem = "new", None
+
+        if match_type == "duplicate":
+            logger.debug("语义去重：跳过 '%s'（与 '%s' 重复）", content, matched_mem.content if matched_mem else "?")
+            continue
+
+        if match_type == "conflict" and matched_mem is not None:
+            # Last Write Wins：用新内容替换旧记忆
+            logger.info(
+                "语义冲突替换：'%s' → '%s' (memory_id=%s)",
+                matched_mem.content, content, matched_mem.memory_id,
+            )
+            matched_mem.content = content
+            matched_mem.embedding = emb_bytes
+            matched_mem.created_at = now
+            matched_mem.last_accessed_at = now
+            matched_mem.access_count = 0
+            matched_mem.is_stale = 0
+            saved.append({
+                "memory_id": matched_mem.memory_id,
+                "content": content,
+                "memory_type": memory_type,
+                "source": "auto",
+                "action": "replaced",
+            })
+            continue
+
+        # 正常新增
+        memory_id = str(uuid.uuid4())
         memory = UserMemory(
             memory_id=memory_id,
             user_id=user_id,
@@ -108,17 +238,25 @@ async def extract_and_save_memories(
             memory_type=memory_type,
             source="auto",
             embedding=emb_bytes,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            access_count=0,
+            is_stale=0,
+            last_accessed_at=now,
+            created_at=now,
         )
         db.add(memory)
+        # 同步更新本地缓存以便后续记忆的冲突检测能看到
+        memories_by_type[memory_type].append(memory)
         saved.append({
             "memory_id": memory_id,
             "content": content,
             "memory_type": memory_type,
             "source": "auto",
+            "action": "created",
         })
 
     if saved:
+        # LRU 淘汰检查
+        _evict_lru(db, user_id)
         db.commit()
 
     return saved
