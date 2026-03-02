@@ -17,4 +17,5 @@ dependencies = [
     "python-dotenv",
     "openai",
     "python-multipart",
+    "xkcdpass",
 ]

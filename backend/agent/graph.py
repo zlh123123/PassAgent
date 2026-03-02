@@ -141,17 +141,36 @@ def build_graph() -> StateGraph:
 
 
 # ---------- 注册所有工具（必须在 build_graph 之前） ----------
+# 通用
 import agent.memory.retrieve_tool  # noqa: F401, E402
-import agent.tools.strength.keyboard_tool  # noqa: F401, E402
+
+# 强度评估
 import agent.tools.strength.zxcvbn_tool  # noqa: F401, E402
-import agent.tools.strength.charset_tool  # noqa: F401, E402
-import agent.tools.strength.weak_list_tool  # noqa: F401, E402
-import agent.tools.strength.repetition_tool  # noqa: F401, E402
+import agent.tools.strength.basic_analysis_tool  # noqa: F401, E402
+import agent.tools.strength.pattern_detect_tool  # noqa: F401, E402
 import agent.tools.strength.pcfg_tool  # noqa: F401, E402
-import agent.tools.strength.pinyin_tool  # noqa: F401, E402
-import agent.tools.strength.date_tool  # noqa: F401, E402
+import agent.tools.strength.weak_list_tool  # noqa: F401, E402
 import agent.tools.strength.personal_info_tool  # noqa: F401, E402
+# passgpt_tool 和 pass2rule_tool 为空桩，待接入 GPU 推理后自动注册
+
+# 口令生成
+import agent.tools.generation.generate_tool  # noqa: F401, E402
+import agent.tools.generation.passphrase_tool  # noqa: F401, E402
+import agent.tools.generation.pronounceable_tool  # noqa: F401, E402
+import agent.tools.generation.site_policy_tool  # noqa: F401, E402
+import agent.tools.generation.multimodal_tool  # noqa: F401, E402
+
+# 泄露检查
 import agent.tools.leak.hibp_password_tool  # noqa: F401, E402
+import agent.tools.leak.hibp_email_tool  # noqa: F401, E402
+import agent.tools.leak.breach_detail_tool  # noqa: F401, E402
+
+# 口令恢复
+import agent.tools.recovery.fragment_tool  # noqa: F401, E402
+import agent.tools.recovery.variant_tool  # noqa: F401, E402
+
+# 图形口令
+import agent.tools.graphical.graphical_mode_tool  # noqa: F401, E402
 
 # 编译好的 graph 实例，供 runner 直接调用
 agent_graph = build_graph()
