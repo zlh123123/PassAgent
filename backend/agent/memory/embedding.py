@@ -6,7 +6,7 @@ from openai import AsyncOpenAI
 
 from config import EMBEDDING_API_KEY, EMBEDDING_BASE_URL
 
-EMBEDDING_MODEL = "BAAI/bge-large-zh-v1.5"
+EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B"
 EMBEDDING_DIM = 1024
 
 
@@ -18,7 +18,7 @@ async def get_embedding(text: str) -> list[float] | None:
     """获取文本的 embedding 向量，失败时返回 None。"""
     try:
         client = _get_client()
-        resp = await client.embeddings.create(model=EMBEDDING_MODEL, input=text)
+        resp = await client.embeddings.create(model=EMBEDDING_MODEL, input=text, dimensions=EMBEDDING_DIM)
         return resp.data[0].embedding
     except Exception:
         return None

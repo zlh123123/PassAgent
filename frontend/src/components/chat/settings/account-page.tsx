@@ -85,7 +85,7 @@ export function AccountPage() {
 
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
+            <div className="w-36 shrink-0">
               <p className="text-sm text-slate-700 dark:text-slate-300">邮箱</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">邮箱不可修改。</p>
             </div>
@@ -96,7 +96,7 @@ export function AccountPage() {
           </div>
 
           <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
+            <div className="w-36 shrink-0">
               <p className="text-sm text-slate-700 dark:text-slate-300">昵称</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">用于展示你的用户名称。</p>
             </div>
