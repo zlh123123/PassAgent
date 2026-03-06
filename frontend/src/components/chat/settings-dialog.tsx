@@ -82,7 +82,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </nav>
 
           {/* Right content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto px-6 py-6">
             {page === "account" && <AccountPage />}
             {page === "appearance" && <AppearancePage />}
             {page === "generation" && <GenerationPage />}

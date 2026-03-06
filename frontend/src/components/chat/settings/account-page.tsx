@@ -71,41 +71,66 @@ export function AccountPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <h3 className="text-base font-medium text-slate-900 dark:text-slate-100">账户设置</h3>
-
-      <div className="space-y-3">
-        <div>
-          <label className="text-sm text-slate-600 dark:text-slate-400 mb-1.5 block">邮箱</label>
-          <div className="relative">
-            <Input value={user?.email || ""} disabled className="bg-slate-50 dark:bg-slate-900 pr-10" />
-            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          </div>
-        </div>
-        <div>
-          <label className="text-sm text-slate-600 dark:text-slate-400 mb-1.5 block">昵称</label>
-          <Input
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            placeholder="输入昵称"
-          />
-        </div>
-        <Button
-          onClick={handleSaveNickname}
-          disabled={saving || nickname === (user?.nickname || "")}
-          className="w-full"
-          size="sm"
-        >
-          {saving ? "保存中..." : "保存"}
-        </Button>
+    <div className="space-y-8">
+      <div className="space-y-1">
+        <h3 className="text-base font-medium text-slate-900 dark:text-slate-100">账户设置</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400">管理账户信息、安全设置与账户删除操作。</p>
       </div>
 
-      {/* 修改密码 */}
-      <div className="border-t border-dashed border-slate-200 dark:border-slate-700 pt-5">
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-3 text-center">修改密码</p>
+      <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+        <div>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">账户信息</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">查看邮箱并更新昵称。</p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm text-slate-700 dark:text-slate-300">邮箱</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">邮箱不可修改。</p>
+            </div>
+            <div className="relative w-full max-w-sm">
+              <Input value={user?.email || ""} disabled className="bg-slate-50 dark:bg-slate-900 pr-10" />
+              <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm text-slate-700 dark:text-slate-300">昵称</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">用于展示你的用户名称。</p>
+            </div>
+            <div className="w-full max-w-sm">
+              <Input
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="输入昵称"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            onClick={handleSaveNickname}
+            disabled={saving || nickname === (user?.nickname || "")}
+            size="sm"
+            className="min-w-24"
+          >
+            {saving ? "保存中..." : "保存"}
+          </Button>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+        <div>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">安全</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">修改登录密码，提升账户安全性。</p>
+        </div>
+
         <div className="space-y-3">
           <div>
-            <label className="text-sm text-slate-600 dark:text-slate-400 mb-1.5 block">当前密码</label>
+            <label className="text-sm text-slate-700 dark:text-slate-300 mb-1.5 block">当前密码</label>
             <PasswordInput
               value={oldPwd}
               onChange={(e) => setOldPwd(e.target.value)}
@@ -113,7 +138,7 @@ export function AccountPage() {
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 dark:text-slate-400 mb-1.5 block">新密码</label>
+            <label className="text-sm text-slate-700 dark:text-slate-300 mb-1.5 block">新密码</label>
             <PasswordInput
               value={newPwd}
               onChange={(e) => setNewPwd(e.target.value)}
@@ -121,7 +146,7 @@ export function AccountPage() {
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 dark:text-slate-400 mb-1.5 block">确认新密码</label>
+            <label className="text-sm text-slate-700 dark:text-slate-300 mb-1.5 block">确认新密码</label>
             <PasswordInput
               value={confirmPwd}
               onChange={(e) => setConfirmPwd(e.target.value)}
@@ -133,23 +158,28 @@ export function AccountPage() {
               {pwdMsg}
             </p>
           )}
-          <Button
-            onClick={handleChangePassword}
-            disabled={pwdSaving || !oldPwd || !newPwd || !confirmPwd}
-            variant="outline"
-            className="w-full"
-            size="sm"
-          >
-            {pwdSaving ? "修改中..." : "修改密码"}
-          </Button>
+          <div className="flex justify-end">
+            <Button
+              onClick={handleChangePassword}
+              disabled={pwdSaving || !oldPwd || !newPwd || !confirmPwd}
+              variant="outline"
+              size="sm"
+              className="min-w-24"
+            >
+              {pwdSaving ? "修改中..." : "修改密码"}
+            </Button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* 删除账户 */}
-      <div className="border-t border-dashed border-slate-200 dark:border-slate-700 pt-5">
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-          删除账户后所有数据将永久丢失，包括对话记录、记忆和上传文件。
-        </p>
+      <section className="rounded-lg border border-red-200 dark:border-red-900/70 bg-red-50/50 dark:bg-red-950/20 p-5 space-y-3">
+        <div>
+          <p className="text-sm font-medium text-red-700 dark:text-red-300">危险操作</p>
+          <p className="text-xs text-red-600/80 dark:text-red-300/80 mt-1">
+            删除账户后所有数据将永久丢失，包括对话记录、记忆和上传文件。
+          </p>
+        </div>
+
         {!confirmDelete ? (
           <Button
             variant="outline"
@@ -181,7 +211,7 @@ export function AccountPage() {
             </div>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

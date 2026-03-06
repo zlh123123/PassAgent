@@ -56,33 +56,38 @@ export function GenerationPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-8">
+      <div className="space-y-1">
         <h3 className="text-base font-medium text-slate-900 dark:text-slate-100">口令生成</h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          控制 Agent 生成口令时的策略倾向。
-        </p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">控制 Agent 生成口令时的策略倾向。</p>
       </div>
 
-      {/* 自动模式 */}
-      <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">自动模式</span>
+      <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+        <div>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">自动模式</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            开启后 Agent 将根据场景和你的记忆自动选择生成策略。
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm text-slate-700 dark:text-slate-300">自动选择策略</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">建议保持开启以获得更稳定结果。</p>
           </div>
           <Switch checked={autoMode === 1} onCheckedChange={handleAutoModeChange} />
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-          Agent 根据场景和你的记忆自动选择最佳生成策略
-        </p>
-      </div>
+      </section>
 
-      {/* 手动档位 - 仅在关闭自动模式时显示 */}
       {autoMode !== 1 && (
-        <div>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">手动档位</p>
-          <div className="px-1 mb-2">
-            <div className="flex justify-between text-sm mb-2">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+          <div>
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">手动档位</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">关闭自动模式后可手动调整安全与易记平衡。</p>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+            <div className="mb-2 flex justify-between text-sm text-slate-700 dark:text-slate-300">
               <span>安全优先</span>
               <span>好记优先</span>
             </div>
@@ -93,7 +98,7 @@ export function GenerationPage() {
               value={[weightIndex]}
               onValueChange={handleWeightChange}
             />
-            <div className="flex justify-between mt-1.5">
+            <div className="mt-1.5 flex justify-between">
               {sliderLabels.map((label) => (
                 <span key={label} className="text-[10px] text-slate-500 dark:text-slate-400">
                   {label}
@@ -102,18 +107,11 @@ export function GenerationPage() {
             </div>
           </div>
 
-          {/* 当前档位详情 */}
-          <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 mt-4">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                当前：{currentLevel.name}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {currentLevel.desc}
-            </p>
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">当前：{currentLevel.name}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{currentLevel.desc}</p>
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

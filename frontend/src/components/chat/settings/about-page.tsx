@@ -52,35 +52,78 @@ export function AboutPage() {
       {/* 第三方服务与致谢 */}
       <div className="border-t border-slate-200 dark:border-slate-800 pt-5">
         <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">第三方服务与致谢</p>
-        <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1.5 leading-relaxed">
-          <li>
-            <span className="font-medium text-slate-600 dark:text-slate-300">Have I Been Pwned API</span>
-            {" "}— 泄露数据查询（k-Anonymity）
-          </li>
-          <li>
-            <span className="font-medium text-slate-600 dark:text-slate-300">SiliconFlow</span>
-            {" "}— 文本向量化服务
-          </li>
-          <li>
-            前端模板基于{" "}
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700">
+          <div className="flex items-start justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Have I Been Pwned API</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">用于账号泄露风险查询与提示。</p>
+            </div>
             <a
-              href="https://github.com/langchain-ai/agent-chat-ui"
+              href="https://haveibeenpwned.com/"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:text-slate-700 dark:hover:text-slate-300"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:underline"
             >
-              Brace Sproul 的开源项目
+              
+              <ExternalLink className="h-3 w-3" />
             </a>
-            （MIT License）
-          </li>
-        </ul>
+          </div>
+
+          <div className="flex items-start justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">SiliconFlow</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">用于文本向量化与语义检索能力。</p>
+            </div>
+            <a
+              href="https://siliconflow.cn"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:underline"
+            >
+              
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
+          <div className="flex items-start justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">LangGraph</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">用于 Agent 工作流编排与状态管理。</p>
+            </div>
+            <a
+              href="https://www.langchain.com/langgraph"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:underline"
+            >
+              
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
+          <div className="flex items-start justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">vLLM</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">用于高性能大模型推理服务。</p>
+            </div>
+            <a
+              href="https://github.com/vllm-project/vllm"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:underline"
+            >
+              
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* 隐私说明 */}
       <div className="border-t border-slate-200 dark:border-slate-800 pt-5">
         <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">隐私说明</p>
         <ul className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed list-disc list-inside space-y-1 pl-1">
-          <li>所有密码评估和生成均在服务端本地完成，不发送至第三方（HIBP 使用 k-Anonymity，仅发送哈希前 5 位）</li>
+          <li>所有密码评估和生成均在服务端本地完成，不发送至第三方</li>
           <li>对话记录存储在服务端数据库中，不会用于模型训练</li>
           <li>你可以随时删除所有数据</li>
         </ul>

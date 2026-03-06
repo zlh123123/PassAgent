@@ -62,12 +62,17 @@ export function AppearancePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <h3 className="text-base font-medium text-slate-900 dark:text-slate-100">外观</h3>
+    <div className="space-y-8">
+      <div className="space-y-1">
+        <h3 className="text-base font-medium text-slate-900 dark:text-slate-100">外观</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400">调整主题、字体与聊天气泡风格。</p>
+      </div>
 
-      {/* 主题 */}
-      <div>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">主题模式</p>
+      <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+        <div>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">主题模式</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">选择浅色、深色或跟随系统。</p>
+        </div>
         <div className="grid grid-cols-3 gap-2">
           {themes.map((t) => {
             const Icon = t.icon;
@@ -75,7 +80,7 @@ export function AppearancePage() {
               <button
                 key={t.value}
                 onClick={() => handleThemeChange(t.value)}
-                className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 transition-colors ${
+                className={`flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-lg border px-3 py-3 transition-colors ${
                   currentTheme === t.value
                     ? "border-slate-900 dark:border-slate-100 bg-slate-50 dark:bg-slate-800"
                     : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60"
@@ -87,11 +92,13 @@ export function AppearancePage() {
             );
           })}
         </div>
-      </div>
+      </section>
 
-      {/* 字体大小 */}
-      <div className="border-t border-slate-200 dark:border-slate-800 pt-5">
-        <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">字体大小</p>
+      <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+        <div>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">字体大小</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">调节聊天内容的显示字号。</p>
+        </div>
         <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
           <div className="px-1">
             <Slider
@@ -101,7 +108,7 @@ export function AppearancePage() {
               value={[fontSizeIndex >= 0 ? fontSizeIndex : 1]}
               onValueChange={handleFontSizeChange}
             />
-            <div className="flex justify-between mt-2">
+            <div className="mt-2 flex justify-between">
               {fontSizes.map((f) => (
                 <span
                   key={f.value}
@@ -116,15 +123,17 @@ export function AppearancePage() {
               ))}
             </div>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 text-center">
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 text-center">
             预览：<span style={{ fontSize: fontSizes[fontSizeIndex >= 0 ? fontSizeIndex : 1].css }}>这是一段示例文字</span>
           </p>
         </div>
-      </div>
+      </section>
 
-      {/* 气泡样式 */}
-      <div className="border-t border-slate-200 dark:border-slate-800 pt-5">
-        <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">气泡样式</p>
+      <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5 space-y-4">
+        <div>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">气泡样式</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">选择消息气泡的视觉外观。</p>
+        </div>
         <div className="grid grid-cols-3 gap-2">
           {bubbleStyles.map((s) => (
             <button
@@ -136,9 +145,9 @@ export function AppearancePage() {
                   : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60"
               }`}
             >
-              <div className="flex flex-col gap-1.5 mb-2">
+              <div className="mb-2 flex flex-col gap-1.5">
                 <div
-                  className={`h-4 w-3/4 ml-auto ${
+                  className={`ml-auto h-4 w-3/4 ${
                     s.value === "minimal"
                       ? "border-b border-slate-300 dark:border-slate-600"
                       : "bg-slate-800 dark:bg-slate-200"
@@ -156,7 +165,7 @@ export function AppearancePage() {
             </button>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
