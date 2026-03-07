@@ -2,16 +2,15 @@
 set -e
 
 export OMP_NUM_THREADS=1
+export PYTORCH_ALLOC_CONF=expandable_segments:True
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 HOST="${VLLM_HOST:-0.0.0.0}"
-GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.9}"
-
-# 模型路径
-QWEN_PATH="${QWEN_PATH:-/root/autodl-tmp/PassAgent/models_deploy/models/Qwen3_5_27B}"
-
-# 端口
 QWEN_PORT="${QWEN_PORT:-6006}"
+GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.7}"
+TP_SIZE="${TP_SIZE:-1}"
+
+QWEN_PATH="${QWEN_PATH:-/root/autodl-tmp/PassAgent/models_deploy/models/Qwen3_5_9B}"
 
 PID_FILE="/tmp/passagent_vllm_pids"
 > "$PID_FILE"
@@ -26,25 +25,27 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-echo "启动 Qwen3.5-27B -> $HOST:$QWEN_PORT"
+echo "启动 Qwen3.5-9B -> $HOST:$QWEN_PORT (tp=$TP_SIZE)"
+
 python -m vllm.entrypoints.openai.api_server \
     --model "$QWEN_PATH" \
     --host "$HOST" \
     --port "$QWEN_PORT" \
+    --tensor-parallel-size "$TP_SIZE" \
     --gpu-memory-utilization "$GPU_MEM_UTIL" \
-    --trust-remote-code \
     --dtype auto \
-    --max-model-len 8192 \
+    --max-model-len 16384 \
+    --reasoning-parser qwen3 \
     --enable-auto-tool-choice \
-    --tool-call-parser hermes \
-    --reasoning-parser deepseek_r1 \
+    --tool-call-parser qwen3_coder \
+    --language-mode \
     --enable-prefix-caching \
-    --served-model-name "Qwen3.5-27B" &
+    --served-model-name "Qwen3.5-9B" &
 echo $! >> "$PID_FILE"
 
 echo ""
 echo "模型已启动，按 Ctrl+C 停止全部服务"
-echo "  Qwen3.5-27B: http://$HOST:$QWEN_PORT/v1"
+echo "  Qwen3.5-9B: http://$HOST:$QWEN_PORT/v1"
 
 wait -n
 echo "有进程异常退出，正在清理..."

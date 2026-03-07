@@ -13,7 +13,7 @@ chmod +x start.sh
 
 ---
 
-## 2 AutoDL 穿透使用 TTS 服务（端口映射）
+## 2 AutoDL 穿透（端口映射）
 
 ### 2.1 启动 start.sh
 
@@ -25,6 +25,7 @@ chmod +x start.sh
 
 ```bash
 ssh -p 16845 root@connect.cqa1.seetacloud.com
+
 ```
 
 则在**本地主机**终端执行：

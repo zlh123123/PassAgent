@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from openai import AsyncOpenAI
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from agent.state import PassAgentState
 from agent.tools.definitions import TOOL_DEFINITIONS
+
+logger = logging.getLogger(__name__)
 
 MAX_LOOPS = 10
 
@@ -23,7 +26,7 @@ PLANNER_SYSTEM_PROMPT = """\
 6. **恶意请求拒绝**：涉及攻击、破解他人密码的请求，直接调用 respond 拒绝。
 7. **文件感知**：uploaded_files 非空时，仅在生成和恢复场景下调用 multimodal_parse。
 8. **信息不足时追问**：用户未提供必要信息（如要检测的密码），直接调用 respond 追问。
-9. **生成后验证**：生成口令后，应调用 口令强度评估 反向验证强度。
+9. **生成后验证**：生成口令后，应调用口令强度评估反向验证强度。
 10. **生成偏好感知**：处理口令生成请求时，读取当前状态中的生成偏好设置：
     - 自动模式（gen_auto_mode=true）：忽略 gen_security_weight，由你根据对话上下文、fetch_site_policy 结果、用户记忆中的 CONSTRAINT 自行决定生成策略和安全档位。用户在对话中的显式要求也纳入决策。
     - 手动模式（gen_auto_mode=false）：**严格**按 gen_security_weight 对应的档位选择生成工具和参数。即使用户在对话中提出不同要求，也按手动设定的档位执行，不覆盖手动设定。
@@ -66,34 +69,31 @@ PLANNER_SYSTEM_PROMPT = """\
 
 
 def _build_context_message(state: PassAgentState) -> str:
-    """将当前状态中的关键上下文拼成一条 system 补充消息，供 planner 参考。"""
+    """将当前状态中的关键上下文拼成一段文本，合并进唯一的 system message。"""
     parts: list[str] = []
 
-    # 已调用的工具
     if state.get("tool_history"):
         called = [t["tool_name"] for t in state["tool_history"]]
         parts.append(f"已调用的工具: {', '.join(called)}")
-        # 最近的工具结果摘要
         for t in state["tool_history"]:
-            parts.append(f"  - {t['tool_name']}({json.dumps(t.get('params', {}), ensure_ascii=False)}) → {json.dumps(t.get('result', {}), ensure_ascii=False)}")
+            parts.append(
+                f"  - {t['tool_name']}({json.dumps(t.get('params', {}), ensure_ascii=False)})"
+                f" → {json.dumps(t.get('result', {}), ensure_ascii=False)}"
+            )
 
-    # 记忆
     if state.get("memories"):
         mem_summary = json.dumps(state["memories"], ensure_ascii=False)
         parts.append(f"用户记忆: {mem_summary}")
 
-    # 上传文件
     if state.get("uploaded_files"):
         files_summary = json.dumps(state["uploaded_files"], ensure_ascii=False)
         parts.append(f"上传文件: {files_summary}")
 
-    # 用户生成偏好
     gen_auto = state.get("gen_auto_mode", True)
     gen_weight = state.get("gen_security_weight", 0.5)
     mode_label = "自动模式（Agent 全权决策）" if gen_auto else f"手动模式（安全性权重 α={gen_weight}）"
     parts.append(f"生成偏好: {mode_label}")
 
-    # 循环计数
     loop = state.get("loop_count", 0)
     parts.append(f"当前循环次数: {loop}/{MAX_LOOPS}")
     if loop >= MAX_LOOPS - 1:
@@ -112,37 +112,45 @@ async def planner_node(state: PassAgentState) -> dict:
     """
     client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
-    # 构建消息列表
-    messages = [{"role": "system", "content": PLANNER_SYSTEM_PROMPT}]
+    context = _build_context_message(state)
+    system_content = PLANNER_SYSTEM_PROMPT
+    if context:
+        system_content += f"\n\n[当前状态]\n{context}"
 
-    # 添加对话历史（从 state.messages 中取 HumanMessage / AIMessage）
+    messages = [{"role": "system", "content": system_content}]
+
+    # 追加对话历史
     for msg in state["messages"]:
         if hasattr(msg, "type"):
             role = "user" if msg.type == "human" else "assistant"
         else:
             role = msg.get("role", "user")
+
         content = msg.content if hasattr(msg, "content") else msg.get("content", "")
         messages.append({"role": role, "content": content})
 
-    # 注入上下文
-    context = _build_context_message(state)
-    if context:
-        messages.append({"role": "system", "content": f"[当前状态]\n{context}"})
+    logger.info("Planner request: model=%s, message_count=%d", LLM_MODEL, len(messages))
 
-    # 调用 LLM
     response = await client.chat.completions.create(
         model=LLM_MODEL,
         messages=messages,
         tools=TOOL_DEFINITIONS,
         tool_choice="auto",
+        temperature=0.1,
         max_tokens=1024,
+        extra_body={
+            "repetition_penalty": 1.05,
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
     )
 
     choice = response.choices[0]
+    logger.info("Planner raw message: %s", choice.message)
+
     tool_call = choice.message.tool_calls[0] if choice.message.tool_calls else None
 
     if tool_call is None:
-        # fallback: 没有工具调用，直接 respond
+        logger.warning("Planner returned no tool_calls, fallback to respond.")
         return {
             "next_action": "respond",
             "action_params": {"reasoning": "LLM 未返回工具调用，默认生成回复"},
@@ -151,9 +159,12 @@ async def planner_node(state: PassAgentState) -> dict:
 
     action_name = tool_call.function.name
     try:
-        action_params = json.loads(tool_call.function.arguments)
+        action_params = json.loads(tool_call.function.arguments or "{}")
     except json.JSONDecodeError:
+        logger.warning("Planner returned malformed tool arguments: %s", tool_call.function.arguments)
         action_params = {}
+
+    logger.info("Planner selected action: %s, params=%s", action_name, action_params)
 
     return {
         "next_action": action_name,
