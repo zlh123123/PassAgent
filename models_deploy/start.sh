@@ -10,7 +10,7 @@ QWEN_PORT="${QWEN_PORT:-6006}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.7}"
 TP_SIZE="${TP_SIZE:-1}"
 
-QWEN_PATH="${QWEN_PATH:-/root/autodl-tmp/PassAgent/models_deploy/models/Qwen3_5_9B}"
+QWEN_PATH="${QWEN_PATH:-/root/autodl-tmp/PassAgent/models_deploy/models/Qwen3.5-35B-A3B-GPTQ-Int4}"
 
 PID_FILE="/tmp/passagent_vllm_pids"
 > "$PID_FILE"
@@ -25,7 +25,7 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-echo "启动 Qwen3.5-9B -> $HOST:$QWEN_PORT (tp=$TP_SIZE)"
+echo "启动 Qwen3.5-35B -> $HOST:$QWEN_PORT (tp=$TP_SIZE)"
 
 python -m vllm.entrypoints.openai.api_server \
     --model "$QWEN_PATH" \
@@ -34,18 +34,19 @@ python -m vllm.entrypoints.openai.api_server \
     --tensor-parallel-size "$TP_SIZE" \
     --gpu-memory-utilization "$GPU_MEM_UTIL" \
     --dtype auto \
-    --max-model-len 16384 \
+    --max-model-len 32768 \
     --reasoning-parser qwen3 \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder \
     --language-mode \
     --enable-prefix-caching \
-    --served-model-name "Qwen3.5-9B" &
+    --quantization moe_wna16 \
+    --served-model-name "Qwen3.5-35B" &
 echo $! >> "$PID_FILE"
 
 echo ""
 echo "模型已启动，按 Ctrl+C 停止全部服务"
-echo "  Qwen3.5-9B: http://$HOST:$QWEN_PORT/v1"
+echo "  Qwen3.5-35B: http://$HOST:$QWEN_PORT/v1"
 
 wait -n
 echo "有进程异常退出，正在清理..."
