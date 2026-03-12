@@ -11,6 +11,9 @@ from agent.state import PassAgentState
 
 logger = logging.getLogger(__name__)
 
+# 最大输出 token 数
+RESPOND_MAX_TOKENS = 8192
+
 
 def _build_respond_system_prompt(state: PassAgentState) -> str:
     """构建最终回复的 system prompt。"""
@@ -25,14 +28,15 @@ def _build_respond_system_prompt(state: PassAgentState) -> str:
 2. 通俗易懂：将技术术语转化为用户能懂的语言。
 3. 安全第一：如果工具返回了敏感信息（如明文密码），在回复中应进行打码处理（如 `P***d`），除非用户明确要求显示。
 4. 简洁有条理：优先给结论，再给原因和建议。
+5. 控制篇幅：回复尽量控制在 1500 字以内，优先精炼表达。如果分析维度多，用分点列出而非长篇大论。
 """.strip()
 
     if tool_count == 0:
         task_instruction = """
 当前状态：闲聊或意图识别阶段
 - 如果用户是在打招呼，请热情回应并简述你能做什么（如：检测密码强度、生成安全口令、查询泄露信息、辅助恢复记忆片段）。
-- 如果用户的问题超出了“口令安全”范畴，请礼貌地将话题引导回你的专业领域。
-- 拒绝处理任何非法的破解请求（如“帮我破解隔壁的 WiFi”）。
+- 如果用户的问题超出了"口令安全"范畴，请礼貌地将话题引导回你的专业领域。
+- 拒绝处理任何非法的破解请求（如"帮我破解隔壁的 WiFi"）。
 """.strip()
     else:
         task_instruction = """
@@ -46,10 +50,13 @@ def _build_respond_system_prompt(state: PassAgentState) -> str:
 - 解读工具返回的数据，不要直接罗列 JSON 字段。
 - 如果涉及评分，请用直观描述（如：🔴高危、🟡中等、🟢安全）。
 - 解释为什么会得出这个结论。
+- 每个分析点控制在 2-3 句话，不要过度展开。
 
 ### 3. 后续建议
 - 给出 2-3 条具体、可执行的建议。
 - 如果信息不足，也要明确告诉用户下一步该补充什么。
+
+注意：整体回复不要超过 1500 字，确保能完整输出。
 """.strip()
 
     return f"{base_persona}\n\n{task_instruction}"
@@ -64,6 +71,9 @@ def _build_tool_context(state: PassAgentState) -> str:
         for i, t in enumerate(state["tool_history"], 1):
             tool_name = t["tool_name"]
             result_str = json.dumps(t.get("result", {}), ensure_ascii=False)
+            # 防止单个工具结果过长挤占输出空间
+            if len(result_str) > 1000:
+                result_str = result_str[:1000] + "...(truncated)"
             status = "成功" if t.get("status") != "error" else "失败"
 
             tools_str.append(
@@ -74,7 +84,9 @@ def _build_tool_context(state: PassAgentState) -> str:
 </tool_execution>"""
             )
 
-        context_parts.append("<tool_outputs>\n" + "\n".join(tools_str) + "\n</tool_outputs>")
+        context_parts.append(
+            "<tool_outputs>\n" + "\n".join(tools_str) + "\n</tool_outputs>"
+        )
 
     if state.get("memories"):
         mem_str = []
@@ -83,7 +95,9 @@ def _build_tool_context(state: PassAgentState) -> str:
             content = mem.get("content", "")
             mem_str.append(f"- [{m_type}] {content}")
 
-        context_parts.append("<user_profile>\n" + "\n".join(mem_str) + "\n</user_profile>")
+        context_parts.append(
+            "<user_profile>\n" + "\n".join(mem_str) + "\n</user_profile>"
+        )
 
     if state.get("uploaded_files"):
         files_str = json.dumps(state["uploaded_files"], ensure_ascii=False)
@@ -101,7 +115,9 @@ async def respond_node(state: PassAgentState) -> dict:
     context_content = _build_tool_context(state)
 
     if context_content:
-        system_content += f"\n\n请严格基于以下上下文回答用户，不要编造未出现的数据：\n{context_content}"
+        system_content += (
+            f"\n\n请严格基于以下上下文回答用户，不要编造未出现的数据：\n{context_content}"
+        )
 
     messages = [{"role": "system", "content": system_content}]
 
@@ -112,19 +128,26 @@ async def respond_node(state: PassAgentState) -> dict:
         else:
             role = msg.get("role", "user")
 
-        content = msg.content if hasattr(msg, "content") else str(msg.get("content", ""))
+        content = (
+            msg.content if hasattr(msg, "content") else str(msg.get("content", ""))
+        )
         messages.append({"role": role, "content": content})
 
-    logger.info("Respond request: model=%s, message_count=%d", LLM_MODEL, len(messages))
+    logger.info(
+        "Respond request: model=%s, message_count=%d, max_tokens=%d",
+        LLM_MODEL, len(messages), RESPOND_MAX_TOKENS,
+    )
 
     full_content = ""
+    finish_reason_final = None
+
     try:
         stream = await client.chat.completions.create(
             model=LLM_MODEL,
             messages=messages,
             stream=True,
             temperature=0.5,
-            max_tokens=2048,
+            max_tokens=RESPOND_MAX_TOKENS,
             extra_body={
                 "repetition_penalty": 1.05,
                 "chat_template_kwargs": {"enable_thinking": False},
@@ -137,6 +160,7 @@ async def respond_node(state: PassAgentState) -> dict:
 
             delta = chunk.choices[0].delta
             content = delta.content or ""
+            finish_reason = chunk.choices[0].finish_reason
 
             if content:
                 full_content += content
@@ -146,17 +170,59 @@ async def respond_node(state: PassAgentState) -> dict:
                         "data": {"content": content},
                     })
 
+            if finish_reason:
+                finish_reason_final = finish_reason
+
+        # -------- 流结束后的处理 --------
+        logger.info(
+            "LLM stream finished. finish_reason=%s, content_len=%d",
+            finish_reason_final, len(full_content),
+        )
+
+        # 如果因 max_tokens 截断，追加提示
+        if finish_reason_final == "length":
+            logger.warning(
+                "Response truncated by max_tokens(%d)! content_len=%d",
+                RESPOND_MAX_TOKENS, len(full_content),
+            )
+            truncation_notice = (
+                "\n\n---\n⚠️ *回复因长度限制被截断，"
+                "请输入「继续」查看剩余内容。*"
+            )
+            full_content += truncation_notice
+            if event_queue is not None:
+                await event_queue.put({
+                    "event": "response_chunk",
+                    "data": {"content": truncation_notice},
+                })
+
     except Exception as e:
         logger.exception("LLM 调用失败: %s", e)
-        full_content = "抱歉，我的大脑暂时短路了，请稍后再试。"
+        error_msg = "\n\n⚠️ *传输中断，以上为部分回复，请稍后重试。*"
+        if full_content:
+            full_content += error_msg
+        else:
+            full_content = "抱歉，我的大脑暂时短路了，请稍后再试。"
+            error_msg = full_content
+
         if event_queue is not None:
             await event_queue.put({
                 "event": "response_chunk",
-                "data": {"content": full_content},
+                "data": {"content": error_msg},
             })
 
     if not full_content:
         full_content = "（未生成任何内容，请检查模型输出或上下文是否异常）"
+
+    # 发送流结束信号
+    if event_queue is not None:
+        await event_queue.put({
+            "event": "response_complete",
+            "data": {
+                "finish_reason": finish_reason_final,
+                "content_length": len(full_content),
+            },
+        })
 
     return {
         "messages": [AIMessage(content=full_content)],
