@@ -383,3 +383,22 @@ TOOL_DEFINITIONS = [
         },
     },
 ]
+
+# ---------------------------------------------------------------------------
+# 按工具名索引，供 skill 动态过滤使用
+# ---------------------------------------------------------------------------
+TOOL_DEFINITIONS_MAP: dict[str, dict] = {
+    tool["function"]["name"]: tool for tool in TOOL_DEFINITIONS
+}
+
+
+def get_tools_for_skill(skill_name: str) -> list[dict]:
+    """返回指定 skill 对应的工具定义列表（skill 专属工具 + 通用工具）。"""
+    from agent.skills import SKILL_REGISTRY, UTILITY_TOOLS
+
+    if skill_name not in SKILL_REGISTRY:
+        # 未知 skill，仅返回通用工具
+        return [TOOL_DEFINITIONS_MAP[n] for n in UTILITY_TOOLS if n in TOOL_DEFINITIONS_MAP]
+
+    names = SKILL_REGISTRY[skill_name]["tools"] + UTILITY_TOOLS
+    return [TOOL_DEFINITIONS_MAP[n] for n in names if n in TOOL_DEFINITIONS_MAP]

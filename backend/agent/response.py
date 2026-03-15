@@ -11,8 +11,8 @@ from agent.state import PassAgentState
 
 logger = logging.getLogger(__name__)
 
-# 最大输出 token 数
-RESPOND_MAX_TOKENS = 16384
+# 最大输出 token 数（需 ≤ 模型 max_tokens 限制，如 Qwen 系列为 8192）
+RESPOND_MAX_TOKENS = 8192
 
 
 def _build_respond_system_prompt(state: PassAgentState) -> str:
@@ -102,6 +102,21 @@ def _build_tool_context(state: PassAgentState) -> str:
     if state.get("uploaded_files"):
         files_str = json.dumps(state["uploaded_files"], ensure_ascii=False)
         context_parts.append(f"<uploaded_files>\n{files_str}\n</uploaded_files>")
+
+    # TODO 执行计划摘要
+    if state.get("todo_list"):
+        plan_lines = []
+        for t in state["todo_list"]:
+            status = t.get("status", "pending").upper()
+            desc = t.get("description", "")
+            summary = t.get("result_summary", "")
+            line = f"[{status}] {desc}"
+            if summary:
+                line += f": {summary}"
+            plan_lines.append(line)
+        context_parts.append(
+            "<execution_plan>\n" + "\n".join(plan_lines) + "\n</execution_plan>"
+        )
 
     return "\n\n".join(context_parts)
 

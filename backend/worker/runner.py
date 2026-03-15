@@ -119,6 +119,9 @@ async def _process_task(task: ChatTask):
             "loop_count": 0,
             "gen_auto_mode": gen_auto_mode,
             "gen_security_weight": gen_security_weight,
+            "active_skill": None,
+            "todo_list": [],
+            "current_step_index": 0,
             "_event_queue": collecting_queue,
         }
 

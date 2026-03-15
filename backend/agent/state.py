@@ -14,6 +14,16 @@ class ToolResult(TypedDict, total=False):
     result: dict
 
 
+class TodoItem(TypedDict, total=False):
+    """TODO List 中的单个步骤"""
+    step_id: int           # 步骤序号 (1-based)
+    description: str       # 该步要做什么（自然语言）
+    tool_name: str | None  # 预计使用的工具名（可选，executor 可覆盖）
+    skill: str | None      # 该步属于哪个 skill（multi_skill 场景用）
+    status: str            # "pending" | "in_progress" | "done" | "skipped"
+    result_summary: str    # 执行后摘要（由 executor 填写）
+
+
 class PassAgentState(MessagesState):
     """LangGraph 状态，继承 MessagesState 自动管理 messages 列表。
 
@@ -40,4 +50,7 @@ class PassAgentState(MessagesState):
     loop_count: int
     gen_auto_mode: bool
     gen_security_weight: float
+    active_skill: str | None
+    todo_list: list[TodoItem]
+    current_step_index: int
     _event_queue: Any

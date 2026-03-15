@@ -1,10 +1,18 @@
-"""LangGraph 状态图定义：Planner → Router → Tool/Respond 循环"""
+"""LangGraph 状态图定义：IntentRouter → SkillExecutor → ToolExecutor 循环
+
+新架构流程：
+    START → intent_router → (route) → skill_executor → (route) → tool_executor → skill_executor → ...
+                               ↓                          ↓
+                            respond                     respond → END
+"""
 from __future__ import annotations
 
+import json
 from langgraph.graph import StateGraph, END
 
 from agent.state import PassAgentState
-from agent.planner import planner_node, MAX_LOOPS
+from agent.router import intent_router_node
+from agent.skill_executor import skill_executor_node, MAX_LOOPS
 from agent.response import respond_node
 
 # 所有已注册的工具名 → 实际执行函数的映射
@@ -22,7 +30,10 @@ def register_tool(name: str):
 
 
 async def tool_executor_node(state: PassAgentState) -> dict:
-    """通用工具执行节点：根据 next_action 分发到具体工具函数。"""
+    """通用工具执行节点：根据 next_action 分发到具体工具函数。
+
+    执行完后自动更新 todo_list 中当前步的状态。
+    """
     action = state.get("next_action")
     params = state.get("action_params", {})
     event_queue = state.get("_event_queue")
@@ -32,13 +43,12 @@ async def tool_executor_node(state: PassAgentState) -> dict:
 
     tool_fn = _TOOL_REGISTRY.get(action)
     if tool_fn is None:
-        # 工具未实现，记录到 tool_history 并继续
+        # 工具未实现
         result = {"error": f"工具 {action} 尚未实现"}
         return {
             "tool_history": [{"tool_name": action, "params": params, "result": result}],
         }
 
-    # 推送 agent_step 事件（工具开始）— planner 的决策步骤已在 router 前推送
     # 执行工具
     try:
         result = await tool_fn(state)
@@ -53,7 +63,7 @@ async def tool_executor_node(state: PassAgentState) -> dict:
         "result": tool_result,
     }
 
-    # 推送 agent_step 事件（工具完成）
+    # 推送 SSE 事件（工具完成）
     if event_queue is not None:
         await event_queue.put({
             "event": "agent_step",
@@ -66,15 +76,45 @@ async def tool_executor_node(state: PassAgentState) -> dict:
         if key in result:
             state_update[key] = result[key]
 
+    # ---------- 更新 todo_list 中当前步的状态 ----------
+    todo_list = state.get("todo_list", [])
+    if todo_list:
+        updated_todo = []
+        for item in todo_list:
+            if item.get("status") == "in_progress":
+                # 生成结果摘要（截断以节省 token）
+                result_str = json.dumps(tool_result, ensure_ascii=False)
+                if len(result_str) > 200:
+                    result_str = result_str[:200] + "..."
+                updated_todo.append({
+                    **item,
+                    "status": "done",
+                    "result_summary": result_str,
+                })
+            else:
+                updated_todo.append(item)
+        state_update["todo_list"] = updated_todo
+
     return state_update
 
 
-def _route_after_planner(state: PassAgentState) -> str:
-    """条件路由：planner 决策后走 respond 还是 tool_executor。"""
+def _route_after_router(state: PassAgentState) -> str:
+    """条件路由：intent_router 之后走 respond 还是 skill_executor。"""
+    skill = state.get("active_skill")
+    action = state.get("next_action")
+
+    # off_topic 或 router 异常 → respond
+    if skill == "off_topic" or action == "respond":
+        return "respond"
+
+    return "skill_executor"
+
+
+def _route_after_skill_executor(state: PassAgentState) -> str:
+    """条件路由：skill_executor 决策后走 respond 还是 tool_executor。"""
     action = state.get("next_action")
     loop_count = state.get("loop_count", 0)
 
-    # 超过最大循环次数，强制 respond
     if loop_count >= MAX_LOOPS:
         return "respond"
 
@@ -84,55 +124,57 @@ def _route_after_planner(state: PassAgentState) -> str:
     return "tool_executor"
 
 
-async def _push_planner_step(state: PassAgentState) -> dict:
-    """Planner 包装节点：先执行 planner，再推送 agent_step SSE 事件。"""
-    result = await planner_node(state)
-    event_queue = state.get("_event_queue")
+async def _push_router_step(state: PassAgentState) -> dict:
+    """Intent Router 包装节点。"""
+    return await intent_router_node(state)
 
-    if event_queue is not None:
-        action = result.get("next_action", "respond")
-        reasoning = result.get("action_params", {}).get("reasoning", "")
-        await event_queue.put({
-            "event": "agent_step",
-            "data": {
-                "node": "planner",
-                "action": action,
-                "reasoning": reasoning,
-            },
-        })
 
-    return result
+async def _push_skill_executor_step(state: PassAgentState) -> dict:
+    """Skill Executor 包装节点。"""
+    return await skill_executor_node(state)
 
 
 def build_graph() -> StateGraph:
     """构建并编译 Agent 状态图。
 
     流程：
-        START → planner → (router) → tool_executor → planner → ...
-                                   → respond → END
+        START → intent_router → (route) → skill_executor → (route) → tool_executor → skill_executor → ...
+                                   ↓                          ↓
+                                respond                    respond → END
     """
     graph = StateGraph(PassAgentState)
 
     # 注册节点
-    graph.add_node("planner", _push_planner_step)
+    graph.add_node("intent_router", _push_router_step)
+    graph.add_node("skill_executor", _push_skill_executor_step)
     graph.add_node("tool_executor", tool_executor_node)
     graph.add_node("respond", respond_node)
 
     # 入口
-    graph.set_entry_point("planner")
+    graph.set_entry_point("intent_router")
 
-    # 条件边：planner 之后根据 next_action 路由
+    # intent_router 之后：off_topic → respond, 其他 → skill_executor
     graph.add_conditional_edges(
-        "planner",
-        _route_after_planner,
+        "intent_router",
+        _route_after_router,
+        {
+            "respond": "respond",
+            "skill_executor": "skill_executor",
+        },
+    )
+
+    # skill_executor 之后：respond 或 tool_executor
+    graph.add_conditional_edges(
+        "skill_executor",
+        _route_after_skill_executor,
         {
             "respond": "respond",
             "tool_executor": "tool_executor",
         },
     )
 
-    # tool_executor 执行完后回到 planner 重新决策
-    graph.add_edge("tool_executor", "planner")
+    # tool_executor 执行完后回到 skill_executor 重新决策
+    graph.add_edge("tool_executor", "skill_executor")
 
     # respond 之后结束
     graph.add_edge("respond", END)
