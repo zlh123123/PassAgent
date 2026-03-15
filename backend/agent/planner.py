@@ -26,6 +26,7 @@ PLANNER_SYSTEM_PROMPT = """\
 4. **跨 skill 组合**：允许一次请求中调用不同类别的工具。
 5. **无关请求直接回复**：与口令安全无关的问题，直接调用 respond。
 6. **恶意请求拒绝**：涉及攻击、破解他人密码的请求，直接调用 respond 拒绝。
+7. **中文转拼音/英文**：当从用户记忆中提取种子词（seeds）或片段（fragments）传给 generate_password 或 fragment_combine 时，**必须将中文内容转换为拼音或对应英文**再传入。口令只能包含 ASCII 字符，中文字符无法直接作为口令组成部分。例如："小红"→"xiaohong"、"北京"→"beijing"、"生日"→"shengri"或"birthday"、"咪咪"→"mimi"。
 7. **文件感知**：uploaded_files 非空时，仅在生成和恢复场景下调用 multimodal_parse。
 8. **信息不足时追问**：用户未提供必要信息（如要检测的密码），直接调用 respond 追问。
 9. **生成后验证**：生成口令后，应调用口令强度评估反向验证强度。

@@ -32,7 +32,7 @@ EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
 
 # --- 多模态模型（SiliconFlow Qwen3-Omni） ---
 OMNI_BASE_URL = os.getenv("OMNI_BASE_URL", "https://api.siliconflow.cn/v1")
-OMNI_MODEL = os.getenv("OMNI_MODEL", "Qwen/Qwen3-Omni-30B-A3B-Captioner")
+OMNI_MODEL = os.getenv("OMNI_MODEL", "Qwen/Qwen3-Omni-30B-A3B-Instruct")
 
 # --- Hunter.io（邮箱验证与信息查询） ---
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY", "")

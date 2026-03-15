@@ -28,7 +28,8 @@ _EXTRACT_PROMPT = """You are a passphrase generation assistant. Please extract 5
 1. Keywords should be distinctive and personally relevant
 2. Include specific object names, locations, colors, emotions, etc.
 3. Output each keyword on a separate line
-4. Only output the keyword list, no other explanations"""
+4. Only output the keyword list, no other explanations
+5. All keywords MUST be in English or Pinyin (romanized Chinese). Never output Chinese characters — convert them to Pinyin or English equivalents. For example: "北京" → "beijing", "猫" → "mao" or "cat"."""
 
 
 def _file_to_base64(file_path: str) -> str:

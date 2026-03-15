@@ -12,7 +12,7 @@ from agent.state import PassAgentState
 logger = logging.getLogger(__name__)
 
 # 最大输出 token 数
-RESPOND_MAX_TOKENS = 8192
+RESPOND_MAX_TOKENS = 16384
 
 
 def _build_respond_system_prompt(state: PassAgentState) -> str:
