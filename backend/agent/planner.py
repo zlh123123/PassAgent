@@ -218,18 +218,27 @@ def _build_messages(
 
 async def _call_llm(messages: list[dict], client: AsyncOpenAI) -> dict:
     """封装一次 LLM 调用"""
-    response = await client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=messages,
-        tools=TOOL_DEFINITIONS,
-        tool_choice="auto",
-        temperature=0.1,
-        max_tokens=2048,  
-        extra_body={
-            "repetition_penalty": 1.05,
-            "chat_template_kwargs": {"enable_thinking": False},
-        },
-    )
+    if LLM_MODEL=="deepseek-chat":
+        response = await client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            tools=TOOL_DEFINITIONS,
+            temperature=0.1,
+            max_tokens=2048,  
+        )
+    else:
+        response = await client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            tools=TOOL_DEFINITIONS,
+            tool_choice="auto",
+            temperature=0.1,
+            max_tokens=2048,  
+            extra_body={
+                "repetition_penalty": 1.05,
+                "chat_template_kwargs": {"enable_thinking": False},
+            },
+        )
     return response
 
 

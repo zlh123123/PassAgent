@@ -142,17 +142,20 @@ async def respond_node(state: PassAgentState) -> dict:
     finish_reason_final = None
 
     try:
-        stream = await client.chat.completions.create(
+        create_kwargs = dict(
             model=LLM_MODEL,
             messages=messages,
             stream=True,
             temperature=0.5,
             max_tokens=RESPOND_MAX_TOKENS,
-            extra_body={
+        )
+        if LLM_MODEL != "deepseek-chat":
+            create_kwargs["extra_body"] = {
                 "repetition_penalty": 1.05,
                 "chat_template_kwargs": {"enable_thinking": False},
-            },
-        )
+            }
+
+        stream = await client.chat.completions.create(**create_kwargs)
 
         async for chunk in stream:
             if not chunk.choices:
