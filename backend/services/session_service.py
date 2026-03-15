@@ -1,15 +1,15 @@
 """会话 CRUD、标题自动生成"""
 import uuid
 import json
-from datetime import datetime, timezone
 from sqlalchemy.orm import Session as DBSession
 
 from database.models import Session, Message
+from utils.timezone import beijing_now_iso
 
 
 def create_session(db: DBSession, user_id: str) -> dict:
     session_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = beijing_now_iso()
     session = Session(
         session_id=session_id,
         user_id=user_id,
@@ -52,7 +52,7 @@ def rename_session(db: DBSession, user_id: str, session_id: str, title: str) -> 
     if not session:
         return None
     session.title = title
-    session.updated_at = datetime.now(timezone.utc).isoformat()
+    session.updated_at = beijing_now_iso()
     db.commit()
     db.refresh(session)
     return {
@@ -123,7 +123,7 @@ def save_message(
     agent_steps: list | None = None,
 ) -> str:
     message_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = beijing_now_iso()
     msg = Message(
         message_id=message_id,
         session_id=session_id,

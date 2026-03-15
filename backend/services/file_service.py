@@ -1,11 +1,11 @@
 """文件存储、类型校验（仅图片/音频）、删除"""
 import os
 import uuid
-from datetime import datetime, timezone
 from sqlalchemy.orm import Session as DBSession
 
 from database.models import UploadedFile
 from config import UPLOAD_DIR
+from utils.timezone import beijing_now_iso
 
 ALLOWED_TYPES = {
     "image/png", "image/jpeg", "image/webp",
@@ -42,7 +42,7 @@ def save_file(
         file_path=file_path,
         file_size=len(file_data),
         file_type=content_type,
-        uploaded_at=datetime.now(timezone.utc).isoformat(),
+        uploaded_at=beijing_now_iso(),
     )
     db.add(record)
     db.commit()

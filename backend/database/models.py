@@ -1,8 +1,11 @@
 """数据库设计"""
-from sqlalchemy import Column, Text, Integer, LargeBinary, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Text, Integer, LargeBinary, ForeignKey, UniqueConstraint, text
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+# SQLite CURRENT_TIMESTAMP 返回 UTC，用 datetime 函数偏移 +8 小时得到北京时间
+_BEIJING_NOW = text("(datetime('now', '+8 hours'))")
 
 
 class User(Base):
@@ -18,7 +21,7 @@ class User(Base):
     bubble_style = Column(Text, default="rounded")
     gen_auto_mode = Column(Integer, default=1)
     gen_security_weight = Column(Text, default="0.5")
-    created_at = Column(Text, server_default="CURRENT_TIMESTAMP")
+    created_at = Column(Text, server_default=_BEIJING_NOW)
 
     # 关系
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
@@ -36,7 +39,7 @@ class Session(Base):
     session_id = Column(Text, primary_key=True)
     user_id = Column(Text, ForeignKey("users.user_id"), nullable=False)
     title = Column(Text, default="新对话")
-    created_at = Column(Text, server_default="CURRENT_TIMESTAMP")
+    created_at = Column(Text, server_default=_BEIJING_NOW)
     updated_at = Column(Text)
 
     # 关系
@@ -56,7 +59,7 @@ class Message(Base):
     content = Column(Text, nullable=False)
     message_type = Column(Text, nullable=False)  # human / assistant
     agent_steps = Column(Text)  # JSON 数组
-    created_at = Column(Text, server_default="CURRENT_TIMESTAMP")
+    created_at = Column(Text, server_default=_BEIJING_NOW)
 
     # 关系
     session = relationship("Session", back_populates="messages")
@@ -72,7 +75,7 @@ class Feedback(Base):
     message_id = Column(Text, ForeignKey("messages.message_id"), unique=True, nullable=False)
     user_id = Column(Text, ForeignKey("users.user_id"), nullable=False)
     feedback_type = Column(Text, nullable=False)  # like / dislike
-    created_at = Column(Text, server_default="CURRENT_TIMESTAMP")
+    created_at = Column(Text, server_default=_BEIJING_NOW)
 
     # 关系
     message = relationship("Message", back_populates="feedback")
@@ -91,7 +94,7 @@ class UploadedFile(Base):
     file_size = Column(Integer)
     file_type = Column(Text)  # MIME 类型
     extracted_text = Column(Text)  # Omni 模型解析后的文本
-    uploaded_at = Column(Text, server_default="CURRENT_TIMESTAMP")
+    uploaded_at = Column(Text, server_default=_BEIJING_NOW)
 
     # 关系
     user = relationship("User", back_populates="uploaded_files")
@@ -111,7 +114,7 @@ class UserMemory(Base):
     access_count = Column(Integer, default=0)  # 被检索命中次数
     is_stale = Column(Integer, default=0)  # 0=正常, 1=待确认（超过90天未访问）
     last_accessed_at = Column(Text)  # ISO 时间戳，每次检索命中时刷新
-    created_at = Column(Text, server_default="CURRENT_TIMESTAMP")
+    created_at = Column(Text, server_default=_BEIJING_NOW)
 
     # 关系
     user = relationship("User", back_populates="memories")
@@ -128,7 +131,7 @@ class Task(Base):
     file_ids = Column(Text)  # JSON 数组
     status = Column(Text, default="pending")  # pending / processing / success / fail
     error_message = Column(Text)
-    created_at = Column(Text, server_default="CURRENT_TIMESTAMP")
+    created_at = Column(Text, server_default=_BEIJING_NOW)
     started_at = Column(Text)
     finished_at = Column(Text)
 

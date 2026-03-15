@@ -1,12 +1,12 @@
 """注册、登录业务逻辑"""
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session as DBSession
 
 from database.models import User
-from utils.security import hash_password, verify_password, create_token
+from utils.security import hash_password, verify_password, create_token, validate_password_strength
 from services.email_service import verify_code
+from utils.timezone import beijing_now_iso
 
 
 def register_user(
@@ -23,6 +23,11 @@ def register_user(
     3. 创建用户并签发 JWT
     返回 {"user_id": ..., "token": ..., ...} 或抛出 ValueError。
     """
+    # 密码强度校验
+    pwd_err = validate_password_strength(password)
+    if pwd_err:
+        raise ValueError(pwd_err)
+
     # 验证码校验
     if not verify_code(email, code):
         raise ValueError("验证码错误或已过期")
@@ -32,7 +37,7 @@ def register_user(
         raise ValueError("该邮箱已注册")
 
     user_id = uuid.uuid4().hex
-    now = datetime.now(timezone.utc).isoformat()
+    now = beijing_now_iso()
 
     user = User(
         user_id=user_id,

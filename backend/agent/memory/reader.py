@@ -1,7 +1,7 @@
 """记忆读取：全量偏好/约束 + 语义检索事实 + 访问追踪 + 过期标记"""
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session as DBSession
 
@@ -21,20 +21,22 @@ STALE_DAYS = 90
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    from utils.timezone import beijing_now_iso
+    return beijing_now_iso()
 
 
 def _is_expired(last_accessed: str | None, created: str | None) -> bool:
     """判断记忆是否超过 STALE_DAYS 天未被访问。"""
+    from utils.timezone import beijing_now
     ref = last_accessed or created
     if not ref:
         return False
     try:
-        # 兼容带/不带时区信息的 ISO 字符串
         ts = datetime.fromisoformat(ref)
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) - ts > timedelta(days=STALE_DAYS)
+            from utils.timezone import BEIJING_TZ
+            ts = ts.replace(tzinfo=BEIJING_TZ)
+        return beijing_now() - ts > timedelta(days=STALE_DAYS)
     except (ValueError, TypeError):
         return False
 

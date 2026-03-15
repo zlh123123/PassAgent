@@ -1,6 +1,5 @@
 """反馈路由"""
 import uuid
-from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session as DBSession
 
@@ -8,6 +7,7 @@ from database.connection import get_db
 from database.models import User, Message, Feedback
 from utils.deps import get_current_user
 from schemas.session import FeedbackRequest
+from utils.timezone import beijing_now_iso
 
 router = APIRouter(prefix="/api/messages", tags=["feedback"])
 
@@ -66,7 +66,7 @@ def toggle_feedback(
             message_id=message_id,
             user_id=user.user_id,
             feedback_type=body.feedback_type,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=beijing_now_iso(),
         )
         db.add(feedback)
         db.commit()

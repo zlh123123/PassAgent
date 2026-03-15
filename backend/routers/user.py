@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session as DBSession
 from database.connection import get_db
 from database.models import User
 from utils.deps import get_current_user
-from utils.security import verify_password, hash_password
+from utils.security import verify_password, hash_password, validate_password_strength
 from schemas.user import ProfileResponse, UpdateProfileRequest, ChangePasswordRequest
 
 router = APIRouter(prefix="/api/user", tags=["user"])
@@ -72,6 +72,12 @@ def change_password(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="原密码错误",
+        )
+    pwd_err = validate_password_strength(body.new_password)
+    if pwd_err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=pwd_err,
         )
     user.password_hash = hash_password(body.new_password)
     db.commit()

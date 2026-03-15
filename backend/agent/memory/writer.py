@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session as DBSession
@@ -56,7 +55,8 @@ EXTRACT_PROMPT = """\
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    from utils.timezone import beijing_now_iso
+    return beijing_now_iso()
 
 
 def _find_semantic_match(

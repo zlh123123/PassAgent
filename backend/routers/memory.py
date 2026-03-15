@@ -1,7 +1,6 @@
 """记忆路由"""
 import logging
 import uuid
-from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session as DBSession
 
@@ -32,7 +31,8 @@ router = APIRouter(prefix="/api/memories", tags=["memories"])
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    from utils.timezone import beijing_now_iso
+    return beijing_now_iso()
 
 
 @router.get("", response_model=MemoriesListResponse)

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,33 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { useAuth } from "@/providers/Auth";
 import { sendCode, register } from "@/lib/auth-api";
+
+/** 计算密码强度：0=空 1=弱 2=中 3=强 */
+function getPasswordStrength(pwd: string): number {
+  if (!pwd) return 0;
+  let score = 0;
+  if (pwd.length >= 8) score++;
+  if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
+  if (/\d/.test(pwd)) score++;
+  if (/[^A-Za-z0-9]/.test(pwd)) score++;
+  return Math.min(score, 3);
+}
+
+const strengthConfig = [
+  { label: "", color: "", width: "0%" },
+  { label: "弱", color: "bg-red-500", width: "33%" },
+  { label: "中", color: "bg-yellow-500", width: "66%" },
+  { label: "强", color: "bg-green-500", width: "100%" },
+];
+
+/** 校验密码是否满足要求，返回错误提示或 null */
+function validatePassword(pwd: string): string | null {
+  if (pwd.length < 8) return "密码长度至少8位";
+  if (!/[A-Z]/.test(pwd)) return "密码必须包含至少一个大写字母";
+  if (!/[a-z]/.test(pwd)) return "密码必须包含至少一个小写字母";
+  if (!/\d/.test(pwd)) return "密码必须包含至少一个数字";
+  return null;
+}
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -22,6 +49,9 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const { setAuth } = useAuth();
   const router = useRouter();
+
+  const strength = useMemo(() => getPasswordStrength(password), [password]);
+  const cfg = strengthConfig[strength];
 
   async function handleSendCode() {
     if (!email) {
@@ -51,12 +81,13 @@ export default function RegisterPage() {
     e.preventDefault();
     setError("");
 
-    if (password !== confirmPassword) {
-      setError("两次输入的密码不一致");
+    const pwdErr = validatePassword(password);
+    if (pwdErr) {
+      setError(pwdErr);
       return;
     }
-    if (password.length < 6) {
-      setError("密码长度至少6位");
+    if (password !== confirmPassword) {
+      setError("两次输入的密码不一致");
       return;
     }
 
@@ -139,11 +170,26 @@ export default function RegisterPage() {
             <Label htmlFor="password">密码</Label>
             <PasswordInput
               id="password"
-              placeholder="至少6位密码"
+              placeholder="至少8位，含大小写字母和数字"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+            {password && (
+              <div className="space-y-1">
+                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${cfg.color} rounded-full transition-all duration-300`}
+                    style={{ width: cfg.width }}
+                  />
+                </div>
+                <p className={`text-xs ${
+                  strength === 1 ? "text-red-500" : strength === 2 ? "text-yellow-600" : "text-green-600"
+                }`}>
+                  密码强度：{cfg.label}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
