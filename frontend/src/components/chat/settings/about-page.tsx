@@ -56,7 +56,7 @@ export function AboutPage() {
           <div className="flex items-start justify-between gap-4 px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Have I Been Pwned API</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">用于账号泄露风险查询与提示。</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">账号泄露风险查询与提示。</p>
             </div>
             <a
               href="https://haveibeenpwned.com/"
@@ -72,7 +72,7 @@ export function AboutPage() {
           <div className="flex items-start justify-between gap-4 px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-slate-700 dark:text-slate-300">SiliconFlow</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">用于文本向量化与语义检索能力。</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">文本向量化与语义检索。</p>
             </div>
             <a
               href="https://siliconflow.cn"
@@ -88,7 +88,7 @@ export function AboutPage() {
           <div className="flex items-start justify-between gap-4 px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-slate-700 dark:text-slate-300">LangGraph</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">用于 Agent 工作流编排与状态管理。</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Agent 工作流编排与状态管理。</p>
             </div>
             <a
               href="https://www.langchain.com/langgraph"
@@ -104,7 +104,7 @@ export function AboutPage() {
           <div className="flex items-start justify-between gap-4 px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-slate-700 dark:text-slate-300">vLLM</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">用于高性能大模型推理服务。</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">高性能大模型推理服务。</p>
             </div>
             <a
               href="https://github.com/vllm-project/vllm"
@@ -112,7 +112,23 @@ export function AboutPage() {
               rel="noopener noreferrer"
               className="shrink-0 inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:underline"
             >
-              
+
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
+          <div className="flex items-start justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Apple Password Manager Resources</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">各网站密码策略规则数据来源。</p>
+            </div>
+            <a
+              href="https://github.com/apple/password-manager-resources"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:underline"
+            >
+
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>
