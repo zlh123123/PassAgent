@@ -108,8 +108,20 @@ def _build_context_message(state: PassAgentState, current_step: dict) -> str:
 
     # 用户记忆
     if state.get("memories"):
-        mem_summary = json.dumps(state["memories"], ensure_ascii=False)
-        parts.append(f"用户记忆: {mem_summary}")
+        prefs = [m["content"] for m in state["memories"] if m.get("memory_type") == "PREFERENCE"]
+        constraints = [m["content"] for m in state["memories"] if m.get("memory_type") == "CONSTRAINT"]
+        facts = [
+            ("[待确认] " + m["content"] if m.get("is_stale") else m["content"])
+            for m in state["memories"] if m.get("memory_type") == "FACT"
+        ]
+        mem_parts = []
+        if prefs:
+            mem_parts.append("偏好: " + "; ".join(prefs))
+        if constraints:
+            mem_parts.append("约束: " + "; ".join(constraints))
+        if facts:
+            mem_parts.append("个人事实: " + "; ".join(facts))
+        parts.append("用户记忆:\n" + "\n".join(mem_parts))
 
     # 上传文件
     if state.get("uploaded_files"):

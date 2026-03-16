@@ -13,9 +13,13 @@ from agent.memory.embedding import (
 )
 
 # 语义检索返回的最大 FACT 条数
-TOP_K = 5
+TOP_K = 8
 # 相似度阈值，低于此值不返回
-SIMILARITY_THRESHOLD = 0.3
+SIMILARITY_THRESHOLD = 0.45
+# PREFERENCE/CONSTRAINT 的相关性过滤阈值（更宽松）；条数少时全量返回
+PREF_SIMILARITY_THRESHOLD = 0.25
+PREF_FULL_RETURN_LIMIT = 8   # 偏好/约束总数 ≤ 此值时全量返回
+PREF_TOP_K = 12              # 超过上限时按相关性取 top-k
 # 记忆过期天数（超过此天数未访问标记为 stale）
 STALE_DAYS = 90
 
@@ -78,11 +82,14 @@ async def retrieve_memory(
     """检索用户记忆。
 
     策略：
-    1. PREFERENCE / CONSTRAINT 类型 → 全量返回（通常数量少，且每次都需要）
-    2. FACT 类型 → 语义检索 top-k；若 embedding 不可用则回退到关键词匹配
-    3. 命中的记忆刷新 last_accessed_at、access_count += 1
-    4. 顺便标记超期未访问的记忆为 stale
-    5. stale 记忆会在返回结果中带上标记，供 Agent 主动询问用户确认
+    1. 先获取 query embedding
+    2. PREFERENCE / CONSTRAINT：
+       - 总数 ≤ PREF_FULL_RETURN_LIMIT 时全量返回
+       - 超过时按语义相关性过滤（阈值 PREF_SIMILARITY_THRESHOLD），取 top PREF_TOP_K
+    3. FACT：语义检索 top-k（阈值 SIMILARITY_THRESHOLD）；embedding 不可用回退关键词匹配
+    4. 命中的记忆刷新 last_accessed_at、access_count += 1
+    5. 顺便标记超期未访问的记忆为 stale
+    6. stale 记忆在返回结果中带上标记，供 Agent 主动询问用户确认
 
     Returns:
         [{"memory_id": ..., "content": ..., "memory_type": ..., "source": ..., "is_stale": ...}, ...]
@@ -99,25 +106,47 @@ async def retrieve_memory(
     # 顺便标记超期记忆
     _mark_stale(db, all_memories)
 
-    # 1) 全量返回偏好和约束
+    # 先获取 query embedding（偏好过滤和事实检索共用）
+    query_vec = await get_embedding(query)
+
     results: list[dict] = []
     hit_memories: list[UserMemory] = []
     facts: list[UserMemory] = []
+    prefs_constraints: list[UserMemory] = []
 
     for m in all_memories:
         if m.memory_type in ("PREFERENCE", "CONSTRAINT"):
-            results.append(_to_dict(m))
-            hit_memories.append(m)
+            prefs_constraints.append(m)
         else:
             facts.append(m)
+
+    # 1) 偏好和约束：少量全量返回，多量按相关性过滤
+    if len(prefs_constraints) <= PREF_FULL_RETURN_LIMIT or query_vec is None:
+        for m in prefs_constraints:
+            results.append(_to_dict(m))
+            hit_memories.append(m)
+    else:
+        scored_pc: list[tuple[float, UserMemory]] = []
+        for m in prefs_constraints:
+            if m.embedding:
+                mem_vec = bytes_to_embedding(m.embedding)
+                score = cosine_similarity(query_vec, mem_vec)
+                if score >= PREF_SIMILARITY_THRESHOLD:
+                    scored_pc.append((score, m))
+            else:
+                # 无 embedding 的偏好/约束始终保留
+                results.append(_to_dict(m))
+                hit_memories.append(m)
+        scored_pc.sort(key=lambda x: x[0], reverse=True)
+        for _, m in scored_pc[:PREF_TOP_K]:
+            results.append(_to_dict(m))
+            hit_memories.append(m)
 
     if not facts:
         _touch_memories(db, hit_memories)
         return results
 
     # 2) 对 FACT 做语义检索
-    query_vec = await get_embedding(query)
-
     if query_vec is not None:
         # 向量检索
         scored: list[tuple[float, UserMemory]] = []
@@ -132,13 +161,13 @@ async def retrieve_memory(
             results.append(_to_dict(m))
             hit_memories.append(m)
     else:
-        # embedding 不可用，回退到关键词匹配
-        query_lower = query.lower()
-        keywords = query_lower.split()
+        # embedding 不可用，回退到关键词匹配（按字符级别支持中文）
+        query_chars = set(query.replace(" ", ""))
         matched: list[UserMemory] = []
         for m in facts:
-            content_lower = (m.content or "").lower()
-            if any(kw in content_lower for kw in keywords):
+            content = m.content or ""
+            # 子串匹配或字符集交集
+            if query.lower() in content.lower() or len(query_chars & set(content)) >= 2:
                 matched.append(m)
         for m in matched[:TOP_K]:
             results.append(_to_dict(m))

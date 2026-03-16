@@ -89,15 +89,40 @@ def _build_tool_context(state: PassAgentState) -> str:
         )
 
     if state.get("memories"):
-        mem_str = []
+        prefs, constraints, facts_fresh, facts_stale = [], [], [], []
         for mem in state["memories"]:
-            m_type = mem.get("memory_type", "INFO")
+            m_type = mem.get("memory_type", "FACT")
             content = mem.get("content", "")
-            mem_str.append(f"- [{m_type}] {content}")
+            is_stale = mem.get("is_stale", False)
+            label = f"[待确认] {content}（长期未核实）" if is_stale else content
+            if m_type == "PREFERENCE":
+                prefs.append(f"- {label}")
+            elif m_type == "CONSTRAINT":
+                constraints.append(f"- {label}")
+            elif is_stale:
+                facts_stale.append(f"- {label}")
+            else:
+                facts_fresh.append(f"- {content}")
 
-        context_parts.append(
-            "<user_profile>\n" + "\n".join(mem_str) + "\n</user_profile>"
-        )
+        profile_parts = []
+        if prefs:
+            profile_parts.append("<preferences>\n" + "\n".join(prefs) + "\n</preferences>")
+        if constraints:
+            profile_parts.append("<constraints>\n" + "\n".join(constraints) + "\n</constraints>")
+        if facts_fresh or facts_stale:
+            all_facts = facts_fresh + facts_stale
+            profile_parts.append("<personal_facts>\n" + "\n".join(all_facts) + "\n</personal_facts>")
+
+        if profile_parts:
+            profile_hint = (
+                "以下是用户的个人信息档案，请自然地参考这些信息，不要逐条复述。"
+                "对标记为[待确认]的信息，如需使用请先向用户确认是否仍然有效。"
+            )
+            context_parts.append(
+                f"<user_profile>\n{profile_hint}\n\n"
+                + "\n\n".join(profile_parts)
+                + "\n</user_profile>"
+            )
 
     if state.get("uploaded_files"):
         files_str = json.dumps(state["uploaded_files"], ensure_ascii=False)
