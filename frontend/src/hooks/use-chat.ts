@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { connectSSE } from "@/lib/sse";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
@@ -33,6 +33,8 @@ export function useChat(sessionId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
   const abortRef = useRef<(() => void) | null>(null);
+  const currentTaskIdRef = useRef<string | null>(null);
+  const prevSessionIdRef = useRef<string | null>(null);
 
   const fetchMessages = useCallback(async () => {
     if (!sessionId) return;
@@ -45,6 +47,34 @@ export function useChat(sessionId: string | null) {
       console.error("Failed to fetch messages:", err);
     }
   }, [sessionId]);
+
+  // 当 sessionId 变化时，清理当前状态并重新加载消息
+  useEffect(() => {
+    if (prevSessionIdRef.current !== sessionId) {
+      // sessionId 变化，清理之前的状态
+      if (prevSessionIdRef.current !== null) {
+        // 停止之前的流式传输
+        abortRef.current?.();
+        currentTaskIdRef.current = null;
+      }
+
+      // 清理状态
+      setMessages([]);
+      setIsLoading(false);
+      setAgentSteps([]);
+      setQueuePosition(null);
+      setError(null);
+      setStreamingContent("");
+
+      // 更新 prevSessionId
+      prevSessionIdRef.current = sessionId;
+
+      // 加载新对话的消息
+      if (sessionId) {
+        fetchMessages();
+      }
+    }
+  }, [sessionId, fetchMessages]);
 
   const sendMessage = useCallback(
     (content: string, fileIds: string[] = []) => {
@@ -71,6 +101,7 @@ export function useChat(sessionId: string | null) {
         (event) => {
           switch (event.event) {
             case "task_queued":
+              currentTaskIdRef.current = event.data.task_id as string;
               setQueuePosition(event.data.position as number);
               break;
 
@@ -120,8 +151,13 @@ export function useChat(sessionId: string | null) {
 
             case "done":
               setIsLoading(false);
+              currentTaskIdRef.current = null;
               // Trigger custom event to notify session list should be refreshed
               window.dispatchEvent(new CustomEvent("session-updated"));
+              break;
+
+            case "task_cancelled":
+              setError(event.data.message as string || "任务已停止");
               break;
           }
         },
@@ -139,7 +175,22 @@ export function useChat(sessionId: string | null) {
     [sessionId, isLoading],
   );
 
-  const stopStreaming = useCallback(() => {
+  const stopStreaming = useCallback(async () => {
+    // 如果有 task_id，先调用后端停止 API（在关闭 SSE 前）
+    const taskId = currentTaskIdRef.current;
+    if (taskId) {
+      try {
+        await apiPost(`/api/chat/${taskId}/stop`, {});
+      } catch (err: any) {
+        // 忽略 404 错误（任务已完成），其他错误记录日志
+        if (err?.status !== 404) {
+          console.error("Failed to stop task:", err);
+        }
+      }
+      currentTaskIdRef.current = null;
+    }
+
+    // 然后再关闭 SSE 连接
     abortRef.current?.();
     setIsLoading(false);
   }, []);

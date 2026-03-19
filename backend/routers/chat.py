@@ -15,6 +15,37 @@ from worker.queue import ChatTask, task_queue, active_tasks
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
+@router.post("/{task_id}/stop")
+async def stop_task(
+    task_id: str,
+    user: User = Depends(get_current_user),
+):
+    """停止正在执行的任务"""
+    task = active_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在或已完成")
+
+    # 验证任务属于当前用户
+    if task.user_id != user.user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权操作该任务")
+
+    # 设置取消标志
+    task.cancelled = True
+    task.status = "cancelled"
+
+    # 发送取消事件
+    try:
+        await task.event_queue.put({
+            "event": "task_cancelled",
+            "data": {"message": "任务已被用户停止"}
+        })
+        await task.event_queue.put({"event": "done", "data": {}})
+    except Exception:
+        pass
+
+    return {"message": "任务已停止"}
+
+
 def _sse_format(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -58,7 +89,7 @@ async def chat(
 
     async def event_stream():
         try:
-            # Send queued event
+            # Send queued event with task_id
             yield _sse_format("task_queued", {"task_id": task_id, "position": position})
 
             # Stream events from task's queue

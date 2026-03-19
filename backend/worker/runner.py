@@ -21,6 +21,11 @@ async def _process_task(task: ChatTask):
     await task.event_queue.put({"event": "task_started", "data": {"task_id": task.task_id}})
 
     try:
+        # 检查是否已取消
+        if task.cancelled:
+            logger.info(f"Task {task.task_id} cancelled before execution")
+            return
+
         # 从 DB 加载对话历史
         db = SessionLocal()
         try:
@@ -51,6 +56,11 @@ async def _process_task(task: ChatTask):
         class CollectingQueue:
             """包装 task.event_queue，同时收集 agent_step 事件。"""
             async def put(self, event):
+                # 在每次事件发送时检查取消状态
+                if task.cancelled:
+                    logger.info(f"Task {task.task_id} cancelled during execution")
+                    raise asyncio.CancelledError("Task cancelled by user")
+
                 if event.get("event") == "agent_step":
                     agent_steps.append(event.get("data", {}))
                 await task.event_queue.put(event)
@@ -164,6 +174,14 @@ async def _process_task(task: ChatTask):
 
         task.status = "success"
 
+    except asyncio.CancelledError:
+        # 任务被取消
+        task.status = "cancelled"
+        logger.info(f"Task {task.task_id} was cancelled")
+        await task.event_queue.put({
+            "event": "task_cancelled",
+            "data": {"message": "任务已被停止"},
+        })
     except Exception as e:
         task.status = "fail"
         await task.event_queue.put({

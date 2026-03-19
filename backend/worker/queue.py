@@ -11,7 +11,8 @@ class ChatTask:
     message: str
     file_ids: list[str] = field(default_factory=list)
     event_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
-    status: str = "pending"  # pending / processing / success / fail
+    status: str = "pending"  # pending / processing / success / fail / cancelled
+    cancelled: bool = False  # 取消标志
 
 
 # 全局任务队列

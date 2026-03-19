@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useChat } from "@/hooks/use-chat";
 import { MessageList } from "@/components/chat/message-list";
@@ -18,16 +17,11 @@ export default function SessionPage() {
     queuePosition,
     error,
     streamingContent,
-    fetchMessages,
     sendMessage,
     stopStreaming,
     toggleFeedback,
     retryMessage,
   } = useChat(sessionId);
-
-  useEffect(() => {
-    fetchMessages();
-  }, [fetchMessages]);
 
   return (
     <>
