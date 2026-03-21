@@ -146,7 +146,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "passgpt_prob",
-            "description": "使用 PassGPT 微调模型评估口令被猜中的概率。需要 GPU 推理服务。",
+            "description": "使用 PassGPT ONNX 模型评估口令被猜中的概率，可在后端 CPU 上运行。",
             "parameters": {
                 "type": "object",
                 "properties": {

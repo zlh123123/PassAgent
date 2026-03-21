@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn[standard]",
     "sqlalchemy",
     "pydantic[email]",
+    "numpy",
+    "onnxruntime",
     "pillow",
     "zxcvbn",
     "httpx",

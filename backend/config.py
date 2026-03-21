@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(BACKEND_DIR)
+
 # --- 数据库 ---
 DATABASE_PATH = os.getenv("DATABASE_PATH", "passagent.db")
 
@@ -36,3 +39,9 @@ OMNI_MODEL = os.getenv("OMNI_MODEL", "Qwen/Qwen3-Omni-30B-A3B-Instruct")
 
 # --- Hunter.io（邮箱验证与信息查询） ---
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY", "")
+
+# --- PassGPT ONNX ---
+PASSGPT_MODEL_PATH = os.getenv(
+    "PASSGPT_MODEL_PATH",
+    os.path.join(REPO_ROOT, "models_deploy", "models", "passgpt", "passgpt.onnx"),
+)
