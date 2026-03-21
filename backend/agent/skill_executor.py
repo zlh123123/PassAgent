@@ -245,160 +245,163 @@ async def skill_executor_node(state: PassAgentState) -> dict:
     - todo_list: 更新后的 TODO List（当前步标为 in_progress）
     """
     client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-    event_queue = state.get("_event_queue")
-    active_skill = state.get("active_skill", "")
-    todo_list = list(state.get("todo_list", []))  # 浅拷贝以便修改
+    try:
+        event_queue = state.get("_event_queue")
+        active_skill = state.get("active_skill", "")
+        todo_list = list(state.get("todo_list", []))  # 浅拷贝以便修改
 
-    # ---------- 找到当前待执行步骤 ----------
-    current_idx, current_step = _find_current_step(todo_list)
+        # ---------- 找到当前待执行步骤 ----------
+        current_idx, current_step = _find_current_step(todo_list)
 
-    if current_step is None:
-        # 所有步骤已完成，走 respond
-        logger.info("All TODO steps done, routing to respond")
+        if current_step is None:
+            # 所有步骤已完成，走 respond
+            logger.info("All TODO steps done, routing to respond")
+            return {
+                "next_action": "respond",
+                "action_params": {"reasoning": "所有计划步骤已完成"},
+                "loop_count": state.get("loop_count", 0) + 1,
+            }
+
+        # 标记当前步为 in_progress
+        todo_list[current_idx] = {**current_step, "status": "in_progress"}
+
+        # ---------- 确定当前 skill 并加载资源 ----------
+        step_skill = _resolve_step_skill(current_step, active_skill)
+        skill_prompt = load_skill_prompt(step_skill)
+        skill_tools = get_tools_for_skill(step_skill)
+
+        logger.info(
+            "SkillExecutor: step=%d/%d, skill=%s, tools=%d, description=%s",
+            current_idx + 1, len(todo_list), step_skill,
+            len(skill_tools), current_step.get("description", ""),
+        )
+
+        # ---------- 已调用指纹集合（去重用） ----------
+        existing_keys = _build_existing_keys(state)
+
+        # ---------- 带重试的决策循环 ----------
+        duplicate_retries = 0
+        extra_hints: list[str] = []
+
+        while duplicate_retries <= MAX_DUPLICATE_RETRIES:
+            messages = _build_messages(state, skill_prompt, current_step, extra_hints)
+            logger.info(
+                "SkillExecutor LLM call: message_count=%d, tool_count=%d, retry=%d",
+                len(messages), len(skill_tools), duplicate_retries,
+            )
+
+            try:
+                response = await _call_llm(messages, skill_tools, client)
+            except Exception as e:
+                logger.error("SkillExecutor LLM call failed: %s", e)
+                # 标记当前步为 skipped
+                todo_list[current_idx] = {
+                    **todo_list[current_idx],
+                    "status": "skipped",
+                    "result_summary": f"LLM 调用失败: {e}",
+                }
+                return {
+                    "next_action": "respond",
+                    "action_params": {"reasoning": f"LLM 调用异常: {e}，强制生成回复"},
+                    "loop_count": state.get("loop_count", 0) + 1,
+                    "todo_list": todo_list,
+                }
+
+            choice = response.choices[0]
+            tool_call = (
+                choice.message.tool_calls[0] if choice.message.tool_calls else None
+            )
+
+            # ---- 无工具调用 → respond ----
+            if tool_call is None:
+                logger.warning("SkillExecutor returned no tool_calls, fallback to respond")
+                todo_list[current_idx] = {
+                    **todo_list[current_idx],
+                    "status": "done",
+                    "result_summary": "LLM 选择直接回复",
+                }
+                return {
+                    "next_action": "respond",
+                    "action_params": {"reasoning": "LLM 未返回工具调用，生成回复"},
+                    "loop_count": state.get("loop_count", 0) + 1,
+                    "todo_list": todo_list,
+                }
+
+            action_name = tool_call.function.name
+            try:
+                action_params = json.loads(tool_call.function.arguments or "{}")
+            except json.JSONDecodeError:
+                logger.warning("Malformed tool arguments: %s", tool_call.function.arguments)
+                action_params = {}
+
+            # ---- respond 不需要去重 ----
+            if action_name == "respond":
+                logger.info("SkillExecutor selected respond")
+                todo_list[current_idx] = {
+                    **todo_list[current_idx],
+                    "status": "done",
+                    "result_summary": "决定汇总回复",
+                }
+                return {
+                    "next_action": "respond",
+                    "action_params": action_params,
+                    "loop_count": state.get("loop_count", 0) + 1,
+                    "todo_list": todo_list,
+                }
+
+            # ---- 去重检查 ----
+            call_key = _make_call_key(action_name, action_params)
+
+            if call_key not in existing_keys:
+                # 正常返回
+                logger.info("SkillExecutor selected: %s, params=%s", action_name, action_params)
+
+                # 推送 SSE 事件
+                if event_queue is not None:
+                    await event_queue.put({
+                        "event": "agent_step",
+                        "data": {
+                            "node": "skill_executor",
+                            "action": action_name,
+                            "reasoning": current_step.get("description", ""),
+                            "step_index": current_idx + 1,
+                            "total_steps": len(todo_list),
+                        },
+                    })
+
+                return {
+                    "next_action": action_name,
+                    "action_params": action_params,
+                    "loop_count": state.get("loop_count", 0) + 1,
+                    "todo_list": todo_list,
+                }
+
+            # ---- 重复调用 ----
+            duplicate_retries += 1
+            logger.warning(
+                "SkillExecutor duplicate (%d/%d): %s(%s)",
+                duplicate_retries, MAX_DUPLICATE_RETRIES,
+                action_name, json.dumps(action_params, ensure_ascii=False),
+            )
+            extra_hints.append(
+                f"⚠️ {action_name}({json.dumps(action_params, ensure_ascii=False)}) 已调用过。"
+                f"请选择不同的工具，或调用 respond。"
+            )
+
+        # ---- 重试耗尽 ----
+        logger.warning("SkillExecutor max duplicate retries, forcing respond")
+        todo_list[current_idx] = {
+            **todo_list[current_idx],
+            "status": "skipped",
+            "result_summary": "重复调用超限，跳过",
+        }
         return {
             "next_action": "respond",
-            "action_params": {"reasoning": "所有计划步骤已完成"},
+            "action_params": {
+                "reasoning": f"工具 {action_name} 重复调用 {duplicate_retries} 次，强制回复"
+            },
             "loop_count": state.get("loop_count", 0) + 1,
+            "todo_list": todo_list,
         }
-
-    # 标记当前步为 in_progress
-    todo_list[current_idx] = {**current_step, "status": "in_progress"}
-
-    # ---------- 确定当前 skill 并加载资源 ----------
-    step_skill = _resolve_step_skill(current_step, active_skill)
-    skill_prompt = load_skill_prompt(step_skill)
-    skill_tools = get_tools_for_skill(step_skill)
-
-    logger.info(
-        "SkillExecutor: step=%d/%d, skill=%s, tools=%d, description=%s",
-        current_idx + 1, len(todo_list), step_skill,
-        len(skill_tools), current_step.get("description", ""),
-    )
-
-    # ---------- 已调用指纹集合（去重用） ----------
-    existing_keys = _build_existing_keys(state)
-
-    # ---------- 带重试的决策循环 ----------
-    duplicate_retries = 0
-    extra_hints: list[str] = []
-
-    while duplicate_retries <= MAX_DUPLICATE_RETRIES:
-        messages = _build_messages(state, skill_prompt, current_step, extra_hints)
-        logger.info(
-            "SkillExecutor LLM call: message_count=%d, tool_count=%d, retry=%d",
-            len(messages), len(skill_tools), duplicate_retries,
-        )
-
-        try:
-            response = await _call_llm(messages, skill_tools, client)
-        except Exception as e:
-            logger.error("SkillExecutor LLM call failed: %s", e)
-            # 标记当前步为 skipped
-            todo_list[current_idx] = {
-                **todo_list[current_idx],
-                "status": "skipped",
-                "result_summary": f"LLM 调用失败: {e}",
-            }
-            return {
-                "next_action": "respond",
-                "action_params": {"reasoning": f"LLM 调用异常: {e}，强制生成回复"},
-                "loop_count": state.get("loop_count", 0) + 1,
-                "todo_list": todo_list,
-            }
-
-        choice = response.choices[0]
-        tool_call = (
-            choice.message.tool_calls[0] if choice.message.tool_calls else None
-        )
-
-        # ---- 无工具调用 → respond ----
-        if tool_call is None:
-            logger.warning("SkillExecutor returned no tool_calls, fallback to respond")
-            todo_list[current_idx] = {
-                **todo_list[current_idx],
-                "status": "done",
-                "result_summary": "LLM 选择直接回复",
-            }
-            return {
-                "next_action": "respond",
-                "action_params": {"reasoning": "LLM 未返回工具调用，生成回复"},
-                "loop_count": state.get("loop_count", 0) + 1,
-                "todo_list": todo_list,
-            }
-
-        action_name = tool_call.function.name
-        try:
-            action_params = json.loads(tool_call.function.arguments or "{}")
-        except json.JSONDecodeError:
-            logger.warning("Malformed tool arguments: %s", tool_call.function.arguments)
-            action_params = {}
-
-        # ---- respond 不需要去重 ----
-        if action_name == "respond":
-            logger.info("SkillExecutor selected respond")
-            todo_list[current_idx] = {
-                **todo_list[current_idx],
-                "status": "done",
-                "result_summary": "决定汇总回复",
-            }
-            return {
-                "next_action": "respond",
-                "action_params": action_params,
-                "loop_count": state.get("loop_count", 0) + 1,
-                "todo_list": todo_list,
-            }
-
-        # ---- 去重检查 ----
-        call_key = _make_call_key(action_name, action_params)
-
-        if call_key not in existing_keys:
-            # 正常返回
-            logger.info("SkillExecutor selected: %s, params=%s", action_name, action_params)
-
-            # 推送 SSE 事件
-            if event_queue is not None:
-                await event_queue.put({
-                    "event": "agent_step",
-                    "data": {
-                        "node": "skill_executor",
-                        "action": action_name,
-                        "reasoning": current_step.get("description", ""),
-                        "step_index": current_idx + 1,
-                        "total_steps": len(todo_list),
-                    },
-                })
-
-            return {
-                "next_action": action_name,
-                "action_params": action_params,
-                "loop_count": state.get("loop_count", 0) + 1,
-                "todo_list": todo_list,
-            }
-
-        # ---- 重复调用 ----
-        duplicate_retries += 1
-        logger.warning(
-            "SkillExecutor duplicate (%d/%d): %s(%s)",
-            duplicate_retries, MAX_DUPLICATE_RETRIES,
-            action_name, json.dumps(action_params, ensure_ascii=False),
-        )
-        extra_hints.append(
-            f"⚠️ {action_name}({json.dumps(action_params, ensure_ascii=False)}) 已调用过。"
-            f"请选择不同的工具，或调用 respond。"
-        )
-
-    # ---- 重试耗尽 ----
-    logger.warning("SkillExecutor max duplicate retries, forcing respond")
-    todo_list[current_idx] = {
-        **todo_list[current_idx],
-        "status": "skipped",
-        "result_summary": "重复调用超限，跳过",
-    }
-    return {
-        "next_action": "respond",
-        "action_params": {
-            "reasoning": f"工具 {action_name} 重复调用 {duplicate_retries} 次，强制回复"
-        },
-        "loop_count": state.get("loop_count", 0) + 1,
-        "todo_list": todo_list,
-    }
+    finally:
+        await client.close()

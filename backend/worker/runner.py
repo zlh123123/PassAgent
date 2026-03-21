@@ -15,6 +15,24 @@ from agent.memory.reader import retrieve_memory
 logger = logging.getLogger(__name__)
 
 
+async def _extract_memories_background(
+    user_id: str,
+    user_message: str,
+    assistant_message: str,
+) -> None:
+    """后台提取记忆，避免阻塞主聊天任务。"""
+    if not user_message or not assistant_message:
+        return
+
+    db = SessionLocal()
+    try:
+        await extract_and_save_memories(db, user_id, user_message, assistant_message)
+    except Exception as e:
+        logger.warning("后台记忆提取失败: %s", e)
+    finally:
+        db.close()
+
+
 async def _process_task(task: ChatTask):
     """处理单个聊天任务：通过 Agent Graph 执行。"""
     task.status = "processing"
@@ -155,22 +173,15 @@ async def _process_task(task: ChatTask):
         finally:
             db.close()
 
-        # 异步提取记忆（不阻塞主流程）
-        try:
-            db = SessionLocal()
-            try:
-                await extract_and_save_memories(
-                    db, task.user_id, task.message, full_content,
-                )
-            finally:
-                db.close()
-        except Exception:
-            pass  # 记忆提取失败不影响正常响应
-
         await task.event_queue.put({
             "event": "response_done",
             "data": {"message_id": message_id},
         })
+
+        # 后台提取记忆，不阻塞当前请求，也不占用 worker 主循环
+        asyncio.create_task(
+            _extract_memories_background(task.user_id, task.message, full_content)
+        )
 
         task.status = "success"
 

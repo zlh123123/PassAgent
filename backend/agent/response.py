@@ -180,6 +180,7 @@ async def respond_node(state: PassAgentState) -> dict:
 
     full_content = ""
     finish_reason_final = None
+    stream = None
 
     try:
         create_kwargs = dict(
@@ -253,6 +254,10 @@ async def respond_node(state: PassAgentState) -> dict:
                 "event": "response_chunk",
                 "data": {"content": error_msg},
             })
+    finally:
+        if stream is not None:
+            await stream.close()
+        await client.close()
 
     if not full_content:
         full_content = "（未生成任何内容，请检查模型输出或上下文是否异常）"

@@ -172,6 +172,8 @@ async def intent_router_node(state: PassAgentState) -> dict:
             "action_params": {"reasoning": f"Router LLM 调用失败: {e}"},
             "loop_count": state.get("loop_count", 0) + 1,
         }
+    finally:
+        await client.close()
 
     raw_text = response.choices[0].message.content or ""
     logger.info("Router raw response: %s", raw_text[:500])

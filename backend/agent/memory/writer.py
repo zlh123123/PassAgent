@@ -204,6 +204,8 @@ async def extract_and_save_memories(
     except Exception as e:
         logger.warning("记忆提取失败: %s | user_message=%s", e, user_message[:100])
         return []
+    finally:
+        await client.close()
 
     if not isinstance(extracted, list) or not extracted:
         return []
@@ -212,9 +214,9 @@ async def extract_and_save_memories(
     saved: list[dict] = []
 
     for item in extracted:
-        content = item.get("content", "").strip()
+        content = (item.get("content") or "").strip()
         memory_type = item.get("memory_type", "FACT")
-        update_of = item.get("update_of", "").strip()  # LLM 标记的被更新记忆原文
+        update_of = (item.get("update_of") or "").strip()  # LLM 标记的被更新记忆原文
         if not content or memory_type not in ("PREFERENCE", "FACT", "CONSTRAINT"):
             continue
 
