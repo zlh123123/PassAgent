@@ -53,4 +53,5 @@ class PassAgentState(MessagesState):
     active_skill: str | None
     todo_list: list[TodoItem]
     current_step_index: int
+    response_hint: str | None
     _event_queue: Any

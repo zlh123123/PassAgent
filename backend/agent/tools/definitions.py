@@ -1,6 +1,6 @@
 """Function Calling 工具定义（供 Planner 节点使用）
 
-工具清单（共 19 个）：
+工具清单（共 20 个）：
 
 通用：respond, retrieve_memory
 强度评估（8）：zxcvbn_check, basic_analysis, pattern_detect, pcfg_analyze,
@@ -9,7 +9,7 @@
                fetch_site_policy, multimodal_parse
 泄露检查（3）：hibp_password_check, hibp_email_check, breach_detail
 口令恢复（2）：fragment_combine, common_variant_expand
-图形口令（1）：graphical_mode
+图形口令（2）：graphical_mode, passinfinity_artifact
 """
 
 TOOL_DEFINITIONS = [
@@ -368,17 +368,38 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "graphical_mode",
-            "description": "唤起前端图形口令组件。Agent 通过此工具启动图片选点或地图选点模式，向用户说明使用方法，并在用户完成后解读结果。",
+            "description": "打开 PassInfinity 独立体验页。Agent 可直接打开图片、地图、富文本界面，或先打开模式选择页。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "mode": {
                         "type": "string",
-                        "enum": ["image", "map"],
-                        "description": "图形口令模式：image（图片选点）或 map（地图选点）",
+                        "enum": ["select", "image", "map", "richtext"],
+                        "description": "PassInfinity 模式：select（选择入口）、image（图片选点）、map（地图选点）、richtext（富文本标记）",
                     }
                 },
                 "required": ["mode"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "passinfinity_artifact",
+            "description": "读取当前用户已保存的 PassInfinity 体验结果，可读最近一条，也可按 artifact_id 精确读取，供后续解释和建议。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "artifact_id": {
+                        "type": "string",
+                        "description": "体验结果 ID。留空时默认读取最近一条。",
+                    },
+                    "latest": {
+                        "type": "boolean",
+                        "description": "是否读取最近一条体验结果，默认 true。",
+                    },
+                },
+                "required": [],
             },
         },
     },

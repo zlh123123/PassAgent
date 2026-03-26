@@ -1,30 +1,44 @@
 ---
 name: graphical-mode
-description: 唤起前端图形口令组件，支持图片选点和地图选点两种模式。当用户想使用图形密码、图片密码、地图密码、可视化密码时使用。
-allowed-tools: graphical_mode
+description: 打开 PassInfinity 独立体验页，支持图片记忆点、地图位置、富文本标记三种独立模式，并能读取用户已保存的体验结果做解释。当用户想使用 PassInfinity、图形口令、图片密码、地图密码、富文本标记或解读 PassInfinity 方案时使用。
+allowed-tools: graphical_mode,passinfinity_artifact
 ---
 
 # 图形口令
 
 ## Quick Start
 
-图形口令通过用户在图片或地图上的选点位置生成密码：
+PassInfinity 通过三种独立界面让用户构造多因子口令：
 
-1. 根据用户需求选择 mode（image 或 map）
-2. **graphical_mode**(mode=...) → 唤起前端组件
-3. **respond** → 向用户说明操作方法，等待用户完成选点
+1. 如果用户已经明确类型，选择 mode（image / map / richtext）
+2. **graphical_mode**(mode=...) → 打开 PassInfinity 独立体验页
+3. **respond** → 向用户说明操作方法，等待用户确认跳转
+
+如果用户只是在问 PassInfinity 是什么，或还没明确想体验哪一种：
+
+1. 不要调用 `graphical_mode`
+2. 先用简洁中文介绍三种模式的区别
+3. 追问用户想先体验哪一种，等用户明确后再打开页面
+
+如果用户要求“解释我刚保存的 PassInfinity 方案”：
+
+1. **passinfinity_artifact**(artifact_id=... 或 latest=true) → 读取体验结果
+2. **respond** → 解释因子结构、指出策略问题并给建议
 
 ## 工具说明
 
 | 工具 | 用途 | 参数 |
 |------|------|------|
-| graphical_mode | 唤起前端图形口令组件 | mode: "image"（图片选点）或 "map"（地图选点） |
+| graphical_mode | 打开体验页 | mode: "image" / "map" / "richtext" |
+| passinfinity_artifact | 读取保存结果 | artifact_id（可选） / latest（默认 true） |
 
 ## 决策策略
 
-- 用户提到"图片密码"/"图片选点" → mode="image"
-- 用户提到"地图密码"/"位置密码" → mode="map"
-- 用户未明确 → 默认推荐 mode="image"，并简要说明两种模式的区别
+- 用户提到"图片密码"/"图片选点"/"图像因子" → mode="image"
+- 用户提到"地图密码"/"位置密码"/"地理位置因子" → mode="map"
+- 用户提到"富文本标记"/"文本标记"/"样式标记" → mode="richtext"
+- 用户提到"PassInfinity 方案解释"/"刚保存的体验结果" → 先读取 `passinfinity_artifact`
+- 用户只提到 PassInfinity、但未明确因子 → 先介绍三种模式，不跳转
 
 ## Examples
 
@@ -32,7 +46,7 @@ allowed-tools: graphical_mode
 
 TODO 计划：
 ```
-1. graphical_mode(mode="image")    → 唤起图片选点组件
+1. graphical_mode(mode="image")    → 打开图片体验页
 2. respond                         → 说明：请在图片上选择 3~5 个记忆点
 ```
 
@@ -40,10 +54,35 @@ TODO 计划：
 
 TODO 计划：
 ```
-1. graphical_mode(mode="map")      → 唤起地图选点组件
+1. graphical_mode(mode="map")      → 打开地图体验页
 2. respond                         → 说明：请在地图上标记对你有意义的位置
+```
+
+**用户：** "我想玩一下 PassInfinity"
+
+TODO 计划：
+```
+1. respond                         → 简要介绍图片、地图、富文本三种模式
+2. respond                         → 追问用户想先体验哪一种
+```
+
+**用户：** "我想试试富文本标记"
+
+TODO 计划：
+```
+1. graphical_mode(mode="richtext") → 打开富文本体验页
+2. respond                         → 说明：先写文字内容，再选择样式标记
+```
+
+**用户：** "帮我解释一下我刚才保存的 PassInfinity 方案"
+
+TODO 计划：
+```
+1. passinfinity_artifact(latest=true)  → 读取最近保存的体验结果
+2. respond                             → 解读因子组合和改进建议
+```
 ```
 
 ## 完成条件
 
-唤起组件后，调用 **respond** 向用户说明操作方式和注意事项。
+打开体验页或读取结果后，调用 **respond** 向用户说明下一步或解读结果。

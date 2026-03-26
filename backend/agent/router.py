@@ -29,7 +29,7 @@ ROUTER_SYSTEM_PROMPT = """\
 - **password-generation**: 用户想生成新的安全口令（如"帮我生成一个密码"）
 - **breach-checking**: 用户想查询密码或邮箱是否泄露（如"这个密码有没有被泄露"）
 - **password-recovery**: 用户想恢复/找回忘记的口令（如"我忘了密码，只记得一些片段"）
-- **graphical-mode**: 用户想使用图形口令（如"我想用图片设密码"）
+- **graphical-mode**: 用户想使用图形口令或解读 PassInfinity 体验结果（如"我想用图片设密码"、"帮我看看刚保存的 PassInfinity 方案"）
 - **off_topic**: 与口令安全无关的闲聊或问候，或恶意破解请求
 - **multi_skill**: 请求涉及多个技能（如"生成一个密码并检测强度"）
 
@@ -66,6 +66,169 @@ TYPE_ROLE_MAP = {
     "system": "system",
     "tool": "tool",
 }
+
+_GRAPHICAL_KEYWORDS = (
+    "passinfinity",
+    "图片密码",
+    "图片选点",
+    "图片记忆点",
+    "图形口令",
+    "图像因子",
+    "地图密码",
+    "位置密码",
+    "地理位置因子",
+    "地图位置因子",
+    "富文本标记",
+    "文本标记",
+    "样式标记",
+)
+_MFA_HINTS = ("多因子认证", "多因素认证", "mfa")
+_CLASSIC_MFA_HINTS = (
+    "otp",
+    "totp",
+    "2fa",
+    "验证码",
+    "短信",
+    "谷歌验证",
+    "google authenticator",
+    "microsoft authenticator",
+    "邮箱验证码",
+    "动态码",
+)
+_EXPERIENCE_HINTS = ("玩", "体验", "试试", "试一下", "打开", "进入")
+_ARTIFACT_READ_HINTS = (
+    "解释",
+    "解读",
+    "分析",
+    "看看",
+    "读取",
+    "刚保存",
+    "保存的",
+    "最近保存",
+    "方案",
+)
+_OPEN_PAGE_HINTS = ("开链接", "打开链接", "链接", "开页面", "打开页面", "跳转", "进入页面", "去看看")
+
+_MODE_KEYWORDS = {
+    "image": ("图片记忆点", "图片密码", "图片选点", "图片因子", "图像因子", "图片"),
+    "map": ("地图位置因子", "地图密码", "位置密码", "地理位置因子", "地图", "位置"),
+    "richtext": ("富文本标记", "文本标记", "样式标记", "富文本"),
+}
+
+_GRAPHICAL_RESPONSE_HINT = (
+    "当前用户是在了解 PassInfinity，但还没有明确选择图片记忆点、地图位置因子或富文本标记。"
+    "请不要让用户立即跳转页面。"
+    "请用很简洁的中文介绍这三种模式各自是做什么的，并在结尾直接问用户想先体验哪一种。"
+    "不要展开泛泛的 MFA 科普，不要输出技术大段落。"
+)
+
+
+def _get_latest_user_message_text(state: PassAgentState) -> str:
+    for msg in reversed(state["messages"]):
+        msg_type = getattr(msg, "type", None)
+        role = msg.get("role") if isinstance(msg, dict) else None
+        if msg_type == "human" or role == "user":
+            content = msg.content if hasattr(msg, "content") else msg.get("content", "")
+            return str(content or "").strip()
+    return ""
+
+
+def _get_recent_message_texts(state: PassAgentState, limit: int = 6) -> list[str]:
+    recent = state["messages"][-limit:]
+    texts: list[str] = []
+    for msg in recent:
+        content = msg.content if hasattr(msg, "content") else msg.get("content", "")
+        text = str(content or "").strip()
+        if text:
+            texts.append(text)
+    return texts
+
+
+def _detect_mode(text: str) -> str | None:
+    lowered = text.lower()
+    for mode, keywords in _MODE_KEYWORDS.items():
+        if any(keyword in lowered for keyword in keywords):
+            return mode
+    return None
+
+
+def _build_todo(skill: str, items: list[tuple[str, str | None]]) -> list[dict]:
+    todo_list = []
+    for index, (description, tool_name) in enumerate(items, start=1):
+        todo_list.append({
+            "step_id": index,
+            "description": description,
+            "tool_name": tool_name,
+            "skill": skill,
+            "status": "pending",
+            "result_summary": "",
+        })
+    return todo_list
+
+
+def _match_graphical_mode(state: PassAgentState) -> tuple[str, list[dict]] | None:
+    latest_text = _get_latest_user_message_text(state)
+    text = latest_text.lower()
+    if not text:
+        return None
+
+    recent_texts = [item.lower() for item in _get_recent_message_texts(state)]
+    recent_context = "\n".join(recent_texts)
+
+    mentions_graphical = any(keyword in text for keyword in _GRAPHICAL_KEYWORDS)
+    mentions_mfa = any(keyword in text for keyword in _MFA_HINTS)
+    mentions_classic_mfa = any(keyword in text for keyword in _CLASSIC_MFA_HINTS)
+    mentions_experience = any(keyword in text for keyword in _EXPERIENCE_HINTS)
+    mentions_open_page = any(keyword in text for keyword in _OPEN_PAGE_HINTS)
+    recent_graphical = any(keyword in recent_context for keyword in _GRAPHICAL_KEYWORDS)
+
+    if (
+        not mentions_graphical
+        and not (mentions_mfa and not mentions_classic_mfa and mentions_experience)
+        and not recent_graphical
+    ):
+        return None
+
+    wants_artifact = "passinfinity" in text and any(keyword in text for keyword in _ARTIFACT_READ_HINTS)
+    if wants_artifact:
+        return (
+            "graphical-mode",
+            _build_todo(
+                "graphical-mode",
+                [
+                    ("读取最近保存的 PassInfinity 结果", "passinfinity_artifact"),
+                    ("解读结果并给出建议", "respond"),
+                ],
+            ),
+        )
+
+    mode = _detect_mode(text)
+    if mode is None and mentions_open_page:
+        mode = _detect_mode(recent_context)
+
+    if mode is None and (mentions_graphical or mentions_mfa):
+        mode = "select"
+
+    description_map = {
+        "select": "介绍 PassInfinity 的三种模式并询问用户选择",
+        "image": "打开 PassInfinity 页面（图片模式）",
+        "map": "打开 PassInfinity 页面（地图模式）",
+        "richtext": "打开 PassInfinity 页面（富文本模式）",
+    }
+    if mode is None:
+        return None
+
+    tool_name = None if mode == "select" else "graphical_mode"
+    return (
+        "graphical-mode",
+        _build_todo(
+            "graphical-mode",
+            [
+                (description_map[mode], tool_name),
+                ("说明如何使用 PassInfinity 页面", "respond") if mode != "select" else ("等待用户选择具体模式", "respond"),
+            ],
+        ),
+    )
 
 
 def _build_router_messages(state: PassAgentState) -> list[dict]:
@@ -143,6 +306,36 @@ async def intent_router_node(state: PassAgentState) -> dict:
     """
     client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     event_queue = state.get("_event_queue")
+    latest_text = _get_latest_user_message_text(state)
+
+    graphical_match = _match_graphical_mode(state)
+    if graphical_match is not None:
+        skill, todo_list = graphical_match
+        next_action = None
+        response_hint = None
+        first_tool_name = todo_list[0].get("tool_name") if todo_list else None
+        if first_tool_name is None:
+            next_action = "respond"
+            response_hint = _GRAPHICAL_RESPONSE_HINT
+        if event_queue is not None:
+            await event_queue.put({
+                "event": "agent_step",
+                "data": {
+                    "node": "intent_router",
+                    "action": skill,
+                    "reasoning": f"命中图形口令规则：{latest_text}",
+                    "todo_list": todo_list,
+                },
+            })
+        logger.info("Router heuristic matched graphical-mode, todo_steps=%d", len(todo_list))
+        return {
+            "active_skill": skill,
+            "todo_list": todo_list,
+            "current_step_index": 0,
+            "next_action": next_action,
+            "action_params": {},
+            "response_hint": response_hint,
+        }
 
     messages = _build_router_messages(state)
     logger.info("Router request: model=%s, message_count=%d", LLM_MODEL, len(messages))

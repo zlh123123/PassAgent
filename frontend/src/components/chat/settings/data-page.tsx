@@ -133,7 +133,7 @@ export function DataPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const results: Record<string, unknown> = {
+      const results: ExportResults = {
         exported_at: new Date().toISOString(),
       };
       const promises: Promise<void>[] = [];
@@ -144,21 +144,21 @@ export function DataPage() {
           ? `/api/export/conversations?session_id=${currentSessionId}&format=${format}`
           : `/api/export/conversations?format=${format}`;
       promises.push(
-        apiGet<{ conversations: unknown }>(convUrl).then((d) => {
+        apiGet<{ conversations: ExportSession[] }>(convUrl).then((d) => {
           results.sessions = d.conversations;
         }),
       );
 
       if (includeMemories) {
         promises.push(
-          apiGet<{ memories: unknown }>("/api/export/memories").then((d) => {
+          apiGet<{ memories: ExportMemory[] }>("/api/export/memories").then((d) => {
             results.memories = d.memories;
           }),
         );
       }
       if (includeSettings && format !== "csv") {
         promises.push(
-          apiGet<{ settings: unknown }>("/api/export/settings").then((d) => {
+          apiGet<{ settings: Record<string, unknown> }>("/api/export/settings").then((d) => {
             results.settings = d.settings;
           }),
         );
@@ -172,7 +172,7 @@ export function DataPage() {
         csv: "text/csv",
         md: "text/markdown",
       };
-      const exportData = results as ExportResults;
+      const exportData = results;
       let content: string;
       if (format === "csv") {
         content = convertToCsv(exportData);

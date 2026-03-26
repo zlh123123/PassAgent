@@ -143,6 +143,10 @@ def _build_tool_context(state: PassAgentState) -> str:
             "<execution_plan>\n" + "\n".join(plan_lines) + "\n</execution_plan>"
         )
 
+    response_hint = state.get("response_hint")
+    if response_hint:
+        context_parts.append(f"<response_hint>\n{response_hint}\n</response_hint>")
+
     return "\n\n".join(context_parts)
 
 

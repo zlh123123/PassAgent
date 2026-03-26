@@ -1,45 +1,56 @@
-"""graphical_mode 工具：唤起前端图形口令组件并处理结果
+"""graphical_mode 工具：打开 PassInfinity 独立体验页
 
 设计说明
 --------
-图形口令是前后端协作流程：
-1. Agent 决策调用 graphical_mode → 向前端推送 graphical_start 事件
-   （携带 mode、使用说明等）
-2. 前端展示组件，用户操作完成后将选点数据回传后端
-3. 后端量化选点熵值，写入 tool_history 供后续 respond 使用
-
-该工具本身只负责第 1 步：推送启动事件 + 返回一条引导消息，
-前端回传数据后由 /api/chat/graphical_result 端点写入 session state。
+图形口令体验被收敛到独立页面 /lab/passinfinity：
+1. Agent 调用 graphical_mode
+2. 后端通过 SSE 推送 passinfinity_open 事件
+3. 前端切换到体验页，并带上 mode 查询参数
 """
 from __future__ import annotations
 
 from agent.graph import register_tool
 from agent.state import PassAgentState
 
-# 图形口令模式的说明文本，会推送给前端用于展示
 _MODE_INFO = {
-    "image": {
-        "title": "图片选点口令",
-        "description": "请在图片上依次点击若干个位置作为你的口令。系统会记录你的选点坐标序列。",
-        "min_points": 4,
-        "max_points": 10,
+    "select": {
+        "title": "PassInfinity 因子选择",
+        "description": "进入 PassInfinity 后，你可以先选择要体验的因子类型，再进入对应的独立界面。",
         "instructions": [
-            "选择一张你熟悉的图片（或使用系统默认图片）",
-            "在图片上依次点击 4-10 个点",
-            "记住点击的顺序和大致位置",
-            "验证时需要按相同顺序点击相近位置",
+            "先从图片记忆点、地图位置或富文本标记里选一个入口",
+            "每种因子都是单独界面，不会混在同一屏",
+            "如果需要，可以在页面内再切换到其他因子继续组合",
+            "保存后可以回到对话里让我帮你解释结果",
+        ],
+    },
+    "image": {
+        "title": "PassInfinity 图片因子体验",
+        "description": "进入体验页后，你可以选择图片并依次点击若干个位置，生成带图片因子的多因子方案。",
+        "instructions": [
+            "先在体验页里选择一张图片",
+            "在图片上依次点击几个记忆点",
+            "需要的话，再补充文本或地图位置因子",
+            "保存后可以回到对话里让我帮你解释结果",
         ],
     },
     "map": {
-        "title": "地图选点口令",
-        "description": "请在地图上依次标记若干个地点作为你的口令。系统会记录你选择的地理坐标序列。",
-        "min_points": 3,
-        "max_points": 8,
+        "title": "PassInfinity 地图因子体验",
+        "description": "进入体验页后，你可以在地图上标记若干个位置，生成带位置因子的多因子方案。",
         "instructions": [
-            "在地图上搜索或缩放到你熟悉的区域",
-            "依次点击 3-8 个有意义的地点",
-            "记住选择的地点和顺序",
-            "验证时需要按相同顺序选择相近地点",
+            "先在地图上找到你熟悉的区域",
+            "依次点击几个有意义的位置",
+            "需要的话，再补充文本或图片因子",
+            "保存后可以回到对话里让我帮你解释结果",
+        ],
+    },
+    "richtext": {
+        "title": "PassInfinity 富文本标记体验",
+        "description": "进入体验页后，你可以通过文本内容和强调样式，生成带文字标记因子的多因子方案。",
+        "instructions": [
+            "先写下你想作为标记的文字内容",
+            "再选择只对你自己有意义的强调样式",
+            "如果需要，可以继续切换到图片或地图因子",
+            "保存后可以回到对话里让我帮你解释结果",
         ],
     },
 }
@@ -47,32 +58,30 @@ _MODE_INFO = {
 
 @register_tool("graphical_mode")
 async def graphical_mode_tool(state: PassAgentState) -> dict:
-    """唤起前端图形口令组件（图片选点或地图选点）。
-
-    向前端推送 graphical_start SSE 事件，前端据此渲染对应组件。
-    用户完成选点后，前端将数据回传至后端，后续由 Agent 解读结果。
-    """
+    """打开独立体验页（图片或地图模式）。"""
     params = state.get("action_params", {})
-    mode = params.get("mode", "image")
+    mode = params.get("mode", "select")
 
     if mode not in _MODE_INFO:
         return {
-            "_tool_result": {"error": f"不支持的图形口令模式: {mode}，可选 image / map"},
+            "_tool_result": {
+                "error": f"不支持的图形口令模式: {mode}，可选 select / image / map / richtext"
+            },
         }
 
     info = _MODE_INFO[mode]
 
-    # 通过 event_queue 推送启动事件给前端
+    path = "/lab/passinfinity" if mode == "select" else f"/lab/passinfinity/{mode}"
+
     event_queue = state.get("_event_queue")
     if event_queue is not None:
         await event_queue.put({
-            "event": "graphical_start",
+            "event": "passinfinity_open",
             "data": {
+                "path": path,
                 "mode": mode,
                 "title": info["title"],
                 "description": info["description"],
-                "min_points": info["min_points"],
-                "max_points": info["max_points"],
                 "instructions": info["instructions"],
             },
         })
@@ -80,6 +89,7 @@ async def graphical_mode_tool(state: PassAgentState) -> dict:
     return {
         "_tool_result": {
             "status": "waiting_for_user",
+            "path": path,
             "mode": mode,
             "title": info["title"],
             "description": info["description"],

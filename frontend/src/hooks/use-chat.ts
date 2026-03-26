@@ -116,6 +116,14 @@ export function useChat(sessionId: string | null) {
               ]);
               break;
 
+            case "passinfinity_open":
+              window.dispatchEvent(
+                new CustomEvent("passinfinity-open", {
+                  detail: event.data,
+                }),
+              );
+              break;
+
             case "response_chunk":
               setStreamingContent(
                 (prev) => prev + (event.data.content as string),

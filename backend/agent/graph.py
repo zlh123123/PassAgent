@@ -214,6 +214,7 @@ import agent.tools.recovery.variant_tool  # noqa: F401, E402
 
 # 图形口令
 import agent.tools.graphical.graphical_mode_tool  # noqa: F401, E402
+import agent.tools.graphical.passinfinity_artifact_tool  # noqa: F401, E402
 
 # 编译好的 graph 实例，供 runner 直接调用
 agent_graph = build_graph()

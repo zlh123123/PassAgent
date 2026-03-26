@@ -90,7 +90,7 @@ export default function WelcomePage(): React.ReactNode {
           </div>
 
           {/* 功能卡片网格 */}
-          <div className={`grid md:grid-cols-3 gap-6 max-w-5xl transition-all duration-1000 delay-500 ${isLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
+          <div className={`grid max-w-5xl gap-6 md:grid-cols-3 transition-all duration-1000 delay-500 ${isLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}>
             {[
               {
                 icon: Shield,

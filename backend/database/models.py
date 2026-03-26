@@ -30,6 +30,11 @@ class User(Base):
     uploaded_files = relationship("UploadedFile", back_populates="user", cascade="all, delete-orphan")
     memories = relationship("UserMemory", back_populates="user", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")
+    passinfinity_artifacts = relationship(
+        "PassInfinityArtifact",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class Session(Base):
@@ -138,3 +143,20 @@ class Task(Base):
     # 关系
     user = relationship("User", back_populates="tasks")
     session = relationship("Session", back_populates="tasks")
+
+
+class PassInfinityArtifact(Base):
+    """PassInfinity 体验结果表"""
+    __tablename__ = "passinfinity_artifacts"
+
+    artifact_id = Column(Text, primary_key=True)
+    user_id = Column(Text, ForeignKey("users.user_id"), nullable=False)
+    title = Column(Text, nullable=False)
+    content_json = Column(Text, nullable=False)  # 结构化因子数据
+    encoded_text = Column(Text, nullable=False)  # PassInfinity 风格编码文本
+    policy_result_json = Column(Text, nullable=False)  # 策略校验结果
+    created_at = Column(Text, server_default=_BEIJING_NOW)
+    updated_at = Column(Text, server_default=_BEIJING_NOW)
+
+    # 关系
+    user = relationship("User", back_populates="passinfinity_artifacts")

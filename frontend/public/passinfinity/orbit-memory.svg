@@ -1,0 +1,13 @@
+<svg width="960" height="540" viewBox="0 0 960 540" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="540" fill="#F7F4ED"/>
+  <rect x="44" y="44" width="872" height="452" rx="30" fill="#FFFDF9" stroke="#273043" stroke-width="4"/>
+  <circle cx="478" cy="270" r="74" fill="#D77A61" stroke="#273043" stroke-width="4"/>
+  <circle cx="478" cy="270" r="142" stroke="#6C8EAD" stroke-width="4" stroke-dasharray="14 12"/>
+  <circle cx="478" cy="270" r="208" stroke="#87A878" stroke-width="4" stroke-dasharray="8 10"/>
+  <circle cx="621" cy="160" r="24" fill="#6C8EAD" stroke="#273043" stroke-width="4"/>
+  <circle cx="296" cy="352" r="28" fill="#87A878" stroke="#273043" stroke-width="4"/>
+  <circle cx="682" cy="332" r="18" fill="#273043"/>
+  <circle cx="382" cy="104" r="16" fill="#273043"/>
+  <path d="M128 428C234 356 316 416 402 416C506 416 566 326 652 326C716 326 778 362 830 404" stroke="#273043" stroke-width="6" stroke-linecap="round"/>
+  <path d="M118 132C194 185 247 202 304 202C377 202 416 160 478 160C554 160 620 232 718 232C764 232 804 218 842 194" stroke="#273043" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 10"/>
+</svg>

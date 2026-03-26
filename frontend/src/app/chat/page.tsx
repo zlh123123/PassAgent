@@ -4,13 +4,13 @@ import { Shield, Zap, Code2, Search } from "lucide-react";
 
 export default function ChatWelcomePage() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6">
-      <div className="mb-8 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
+      <div className="mb-10 text-center">
         <h1 className="mb-2 text-3xl font-bold text-slate-900 dark:text-slate-100">PassAgent</h1>
         <p className="text-slate-500 dark:text-slate-400">基于LLM的口令安全智能助手</p>
       </div>
 
-      <div className="grid max-w-2xl grid-cols-2 gap-4">
+      <div className="grid w-full max-w-3xl gap-4 sm:grid-cols-2">
         {[
           {
             icon: Shield,
@@ -35,13 +35,15 @@ export default function ChatWelcomePage() {
         ].map((item, i) => (
           <div
             key={i}
-            className="rounded-xl border border-slate-200 dark:border-slate-700 p-5 transition-colors hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+            className="rounded-2xl border border-slate-200 dark:border-slate-700 p-5 transition-colors hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50"
           >
-            <item.icon className="mb-3 h-5 w-5 text-slate-400 dark:text-slate-500" />
-            <h3 className="mb-1 text-sm font-medium text-slate-800 dark:text-slate-200">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800">
+              <item.icon className="h-5 w-5 text-slate-500 dark:text-slate-300" />
+            </div>
+            <h3 className="mb-2 text-sm font-medium text-slate-800 dark:text-slate-200">
               {item.title}
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{item.desc}</p>
+            <p className="text-xs leading-6 text-slate-500 dark:text-slate-400">{item.desc}</p>
           </div>
         ))}
       </div>

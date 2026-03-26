@@ -33,6 +33,79 @@ TYPE_ROLE_MAP = {
 }
 
 
+def _latest_user_text(state: PassAgentState) -> str:
+    for msg in reversed(state["messages"]):
+        msg_type = getattr(msg, "type", None)
+        role = msg.get("role") if isinstance(msg, dict) else None
+        if msg_type == "human" or role == "user":
+            content = msg.content if hasattr(msg, "content") else msg.get("content", "")
+            return str(content or "").strip()
+    return ""
+
+
+def _recent_texts(state: PassAgentState, limit: int = 6) -> str:
+    texts: list[str] = []
+    for msg in state["messages"][-limit:]:
+        content = msg.content if hasattr(msg, "content") else msg.get("content", "")
+        text = str(content or "").strip()
+        if text:
+            texts.append(text.lower())
+    return "\n".join(texts)
+
+
+def _infer_graphical_mode(text: str) -> str | None:
+    if any(keyword in text for keyword in ("图片记忆点", "图片密码", "图片选点", "图片因子", "图像因子", "图片")):
+        return "image"
+    if any(keyword in text for keyword in ("地图位置因子", "地图密码", "位置密码", "地理位置因子", "地图", "位置")):
+        return "map"
+    if any(keyword in text for keyword in ("富文本标记", "文本标记", "样式标记", "富文本")):
+        return "richtext"
+    return None
+
+
+def _maybe_short_circuit_graphical_mode(
+    state: PassAgentState,
+    step_skill: str,
+    current_step: dict,
+    todo_list: list[dict],
+) -> dict | None:
+    if step_skill != "graphical-mode":
+        return None
+
+    latest_text = _latest_user_text(state).lower()
+    recent_context = _recent_texts(state)
+    if not latest_text:
+        return None
+
+    wants_artifact = "passinfinity" in latest_text and any(
+        keyword in latest_text
+        for keyword in ("解释", "解读", "分析", "看看", "刚保存", "保存的", "最近保存", "方案")
+    )
+
+    if wants_artifact:
+        return {
+            "next_action": "passinfinity_artifact",
+            "action_params": {"latest": True},
+            "loop_count": state.get("loop_count", 0) + 1,
+            "todo_list": todo_list,
+        }
+
+    mode = _infer_graphical_mode(latest_text)
+    if mode is None and any(keyword in latest_text for keyword in ("开链接", "打开链接", "链接", "开页面", "打开页面", "跳转", "进入页面", "去看看")):
+        mode = _infer_graphical_mode(recent_context)
+    if mode is None:
+        mode = _infer_graphical_mode((current_step.get("description", "") or "").lower())
+    if mode is None:
+        mode = "select"
+
+    return {
+        "next_action": "graphical_mode",
+        "action_params": {"mode": mode},
+        "loop_count": state.get("loop_count", 0) + 1,
+        "todo_list": todo_list,
+    }
+
+
 def _make_call_key(tool_name: str, params: dict) -> str:
     """生成工具调用的唯一指纹"""
     param_str = json.dumps(params, sort_keys=True, ensure_ascii=False)
@@ -275,6 +348,28 @@ async def skill_executor_node(state: PassAgentState) -> dict:
             current_idx + 1, len(todo_list), step_skill,
             len(skill_tools), current_step.get("description", ""),
         )
+
+        shortcut_result = _maybe_short_circuit_graphical_mode(
+            state, step_skill, current_step, todo_list
+        )
+        if shortcut_result is not None:
+            logger.info(
+                "SkillExecutor shortcut for graphical-mode: %s, params=%s",
+                shortcut_result["next_action"],
+                shortcut_result["action_params"],
+            )
+            if event_queue is not None:
+                await event_queue.put({
+                    "event": "agent_step",
+                    "data": {
+                        "node": "skill_executor",
+                        "action": shortcut_result["next_action"],
+                        "reasoning": current_step.get("description", "") or "命中图形口令快捷规则",
+                        "step_index": current_idx + 1,
+                        "total_steps": len(todo_list),
+                    },
+                })
+            return shortcut_result
 
         # ---------- 已调用指纹集合（去重用） ----------
         existing_keys = _build_existing_keys(state)
