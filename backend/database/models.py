@@ -1,5 +1,5 @@
 """数据库设计"""
-from sqlalchemy import Column, Text, Integer, LargeBinary, ForeignKey, UniqueConstraint, text
+from sqlalchemy import Column, Text, Integer, ForeignKey, text
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -28,7 +28,12 @@ class User(Base):
     messages = relationship("Message", back_populates="user", cascade="all, delete-orphan")
     feedbacks = relationship("Feedback", back_populates="user", cascade="all, delete-orphan")
     uploaded_files = relationship("UploadedFile", back_populates="user", cascade="all, delete-orphan")
-    memories = relationship("UserMemory", back_populates="user", cascade="all, delete-orphan")
+    memory_profile = relationship(
+        "UserMemoryProfile",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
     tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")
     passinfinity_artifacts = relationship(
         "PassInfinityArtifact",
@@ -106,23 +111,18 @@ class UploadedFile(Base):
     session = relationship("Session", back_populates="uploaded_files")
 
 
-class UserMemory(Base):
-    """用户记忆表"""
-    __tablename__ = "user_memories"
+class UserMemoryProfile(Base):
+    """用户记忆档案表（markdown 文本）"""
+    __tablename__ = "user_memory_profiles"
 
-    memory_id = Column(Text, primary_key=True)
-    user_id = Column(Text, ForeignKey("users.user_id"), nullable=False)
-    content = Column(Text, nullable=False)
-    memory_type = Column(Text, nullable=False)  # PREFERENCE / FACT / CONSTRAINT
-    source = Column(Text, default="auto")  # auto / manual
-    embedding = Column(LargeBinary)  # 文本向量，用于语义检索
-    access_count = Column(Integer, default=0)  # 被检索命中次数
-    is_stale = Column(Integer, default=0)  # 0=正常, 1=待确认（超过90天未访问）
-    last_accessed_at = Column(Text)  # ISO 时间戳，每次检索命中时刷新
+    user_id = Column(Text, ForeignKey("users.user_id"), primary_key=True)
+    content_md = Column(Text, nullable=False)
     created_at = Column(Text, server_default=_BEIJING_NOW)
+    updated_at = Column(Text, server_default=_BEIJING_NOW)
+    last_used_at = Column(Text)
 
     # 关系
-    user = relationship("User", back_populates="memories")
+    user = relationship("User", back_populates="memory_profile")
 
 
 class Task(Base):

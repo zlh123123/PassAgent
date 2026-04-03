@@ -1,169 +1,145 @@
-"""记忆路由"""
-import logging
-import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+"""记忆路由（markdown profile 版）。"""
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session as DBSession
 
+from agent.memory.profile import (
+    ensure_memory_profile,
+    memory_sections_to_payload,
+    parse_memory_profile,
+    render_memory_profile,
+    save_memory_profile_content,
+)
 from database.connection import get_db
-from database.models import User, UserMemory
-from utils.deps import get_current_user
+from database.models import User
 from schemas.memory import (
-    MemoriesListResponse,
-    MemoryResponse,
-    CreateMemoryRequest,
-    CreateMemoryResponse,
+    MemoryItemRequest,
+    MemoryOperationResponse,
+    MemoryProfileResponse,
+    SaveMemoryProfileRequest,
+    SaveMemoryProfileResponse,
+    UpdateMemoryItemRequest,
 )
-from agent.memory.embedding import (
-    get_embedding,
-    embedding_to_bytes,
-    bytes_to_embedding,
-    cosine_similarity,
-)
-from agent.memory.writer import (
-    DEDUP_THRESHOLD,
-    CONFLICT_THRESHOLD,
-    MAX_MEMORIES_PER_USER,
-    _evict_lru,
-)
+from utils.deps import get_current_user
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/memories", tags=["memories"])
 
-
-def _now_iso() -> str:
-    from utils.timezone import beijing_now_iso
-    return beijing_now_iso()
+_VALID_MEMORY_TYPES = ("PREFERENCE", "FACT", "CONSTRAINT")
 
 
-@router.get("", response_model=MemoriesListResponse)
-def list_memories(
-    user: User = Depends(get_current_user),
-    db: DBSession = Depends(get_db),
-):
-    memories = (
-        db.query(UserMemory)
-        .filter(UserMemory.user_id == user.user_id)
-        .order_by(UserMemory.created_at.desc())
-        .all()
-    )
-    return MemoriesListResponse(
-        memories=[
-            MemoryResponse(
-                memory_id=m.memory_id,
-                content=m.content,
-                memory_type=m.memory_type,
-                source=m.source or "auto",
-                created_at=m.created_at or "",
-                is_stale=bool(m.is_stale),
-                access_count=m.access_count or 0,
-                last_accessed_at=m.last_accessed_at,
-            )
-            for m in memories
-        ]
+def _build_profile_response(profile) -> MemoryProfileResponse:
+    sections, _ = parse_memory_profile(profile.content_md)
+    return MemoryProfileResponse(
+        content_md=profile.content_md,
+        sections=memory_sections_to_payload(sections),
+        created_at=profile.created_at or "",
+        updated_at=profile.updated_at or profile.created_at or "",
+        last_used_at=profile.last_used_at,
     )
 
 
-@router.post("", response_model=CreateMemoryResponse)
-async def create_memory(
-    body: CreateMemoryRequest,
+@router.get("", response_model=MemoryProfileResponse)
+def get_memory_profile(
     user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    if body.memory_type not in ("PREFERENCE", "FACT", "CONSTRAINT"):
+    profile = ensure_memory_profile(db, user.user_id)
+    return _build_profile_response(profile)
+
+
+@router.put("", response_model=SaveMemoryProfileResponse)
+def save_memory_profile(
+    body: SaveMemoryProfileRequest,
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    profile = ensure_memory_profile(db, user.user_id)
+    try:
+        _, changed = save_memory_profile_content(db, profile, body.content_md)
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="memory_type 必须是 PREFERENCE / FACT / CONSTRAINT",
+            detail=str(e),
         )
+    return SaveMemoryProfileResponse(message="记忆已保存" if changed else "记忆无变化")
 
-    now = _now_iso()
 
-    # 生成 embedding 向量
-    vec = await get_embedding(body.content)
-    emb_bytes = embedding_to_bytes(vec) if vec else None
+@router.post("/items", response_model=MemoryOperationResponse)
+def add_memory_item(
+    body: MemoryItemRequest,
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    if body.memory_type not in _VALID_MEMORY_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="memory_type 无效")
 
-    # 语义冲突检测（与 writer 逻辑一致）
-    if vec is not None:
-        same_type_memories = (
-            db.query(UserMemory)
-            .filter(
-                UserMemory.user_id == user.user_id,
-                UserMemory.memory_type == body.memory_type,
-            )
-            .all()
-        )
-        best_sim = 0.0
-        best_mem = None
-        for m in same_type_memories:
-            if m.embedding:
-                mem_vec = bytes_to_embedding(m.embedding)
-                sim = cosine_similarity(vec, mem_vec)
-                if sim > best_sim:
-                    best_sim = sim
-                    best_mem = m
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="content 不能为空")
 
-        if best_sim > DEDUP_THRESHOLD:
-            # 重复，不写入
-            return CreateMemoryResponse(
-                memory_id=best_mem.memory_id if best_mem else "",
-                message="已存在相似记忆，无需重复添加",
-            )
+    profile = ensure_memory_profile(db, user.user_id)
+    sections, _ = parse_memory_profile(profile.content_md)
+    if content in sections[body.memory_type]:
+        return MemoryOperationResponse(message="该记忆已存在")
 
-        if best_sim > CONFLICT_THRESHOLD and best_mem is not None:
-            # 冲突替换
-            logger.info("手动记忆冲突替换: '%s' → '%s'", best_mem.content, body.content)
-            best_mem.content = body.content
-            best_mem.embedding = emb_bytes
-            best_mem.created_at = now
-            best_mem.last_accessed_at = now
-            best_mem.access_count = 0
-            best_mem.is_stale = 0
-            best_mem.source = "manual"
-            db.commit()
-            return CreateMemoryResponse(memory_id=best_mem.memory_id, message="已更新冲突记忆")
+    sections[body.memory_type].append(content)
+    _, changed = save_memory_profile_content(db, profile, render_memory_profile(sections))
+    return MemoryOperationResponse(message="记忆已添加" if changed else "记忆无变化")
 
-    # 正常新增
-    memory_id = str(uuid.uuid4())
-    memory = UserMemory(
-        memory_id=memory_id,
-        user_id=user.user_id,
-        content=body.content,
-        memory_type=body.memory_type,
-        source="manual",
-        embedding=emb_bytes,
-        access_count=0,
-        is_stale=0,
-        last_accessed_at=now,
-        created_at=now,
-    )
-    db.add(memory)
-    _evict_lru(db, user.user_id)
-    db.commit()
-    return CreateMemoryResponse(memory_id=memory_id, message="记忆已添加")
+
+@router.put("/items", response_model=MemoryOperationResponse)
+def update_memory_item(
+    body: UpdateMemoryItemRequest,
+    user: User = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    if body.memory_type not in _VALID_MEMORY_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="memory_type 无效")
+
+    old_content = body.old_content.strip()
+    new_content = body.new_content.strip()
+    if not old_content or not new_content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="内容不能为空")
+
+    profile = ensure_memory_profile(db, user.user_id)
+    sections, _ = parse_memory_profile(profile.content_md)
+    items = sections[body.memory_type]
+    try:
+        index = items.index(old_content)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="记忆不存在")
+
+    items[index] = new_content
+    _, changed = save_memory_profile_content(db, profile, render_memory_profile(sections))
+    return MemoryOperationResponse(message="记忆已更新" if changed else "记忆无变化")
 
 
 @router.delete("")
-def delete_all_memories(
+def clear_memory_profile(
     user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    db.query(UserMemory).filter(UserMemory.user_id == user.user_id).delete()
-    db.commit()
+    profile = ensure_memory_profile(db, user.user_id)
+    save_memory_profile_content(db, profile, render_memory_profile())
     return {"message": "已清除全部记忆"}
 
 
-@router.delete("/{memory_id}")
-def delete_memory(
-    memory_id: str,
+@router.delete("/items", response_model=MemoryOperationResponse)
+def delete_memory_item(
+    memory_type: str = Query(...),
+    content: str = Query(...),
     user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    memory = (
-        db.query(UserMemory)
-        .filter(UserMemory.memory_id == memory_id, UserMemory.user_id == user.user_id)
-        .first()
-    )
-    if not memory:
+    if memory_type not in _VALID_MEMORY_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="memory_type 无效")
+
+    profile = ensure_memory_profile(db, user.user_id)
+    sections, _ = parse_memory_profile(profile.content_md)
+    items = sections[memory_type]
+    try:
+        items.remove(content.strip())
+    except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="记忆不存在")
-    db.delete(memory)
-    db.commit()
-    return {"message": "已删除"}
+
+    _, changed = save_memory_profile_content(db, profile, render_memory_profile(sections))
+    return MemoryOperationResponse(message="记忆已删除" if changed else "记忆无变化")

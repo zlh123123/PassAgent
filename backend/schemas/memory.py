@@ -1,31 +1,40 @@
-from pydantic import BaseModel
 from typing import List, Optional
 
+from pydantic import BaseModel
 
-# back -> front: 单条记忆详情
-class MemoryResponse(BaseModel):
-    memory_id: str
-    content: str
+
+class MemorySectionResponse(BaseModel):
     memory_type: str
-    source: str
+    label: str
+    items: List[str]
+
+
+class MemoryProfileResponse(BaseModel):
+    content_md: str
+    sections: List[MemorySectionResponse]
     created_at: str
-    is_stale: bool = False
-    access_count: int = 0
-    last_accessed_at: Optional[str] = None
+    updated_at: str
+    last_used_at: Optional[str] = None
 
 
-# front -> back: 创建记忆
-class CreateMemoryRequest(BaseModel):
-    content: str
-    memory_type: str
+class SaveMemoryProfileRequest(BaseModel):
+    content_md: str
 
 
-# back -> front: 创建记忆结果
-class CreateMemoryResponse(BaseModel):
-    memory_id: str
+class SaveMemoryProfileResponse(BaseModel):
     message: str
 
 
-# back -> front: 记忆列表
-class MemoriesListResponse(BaseModel):
-    memories: List[MemoryResponse]
+class MemoryItemRequest(BaseModel):
+    content: str
+    memory_type: str
+
+
+class UpdateMemoryItemRequest(BaseModel):
+    old_content: str
+    new_content: str
+    memory_type: str
+
+
+class MemoryOperationResponse(BaseModel):
+    message: str

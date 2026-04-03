@@ -1,5 +1,5 @@
 from .connection import get_db, engine
-from .models import Base, User, Session, Message, Feedback, UploadedFile, UserMemory, Task
+from .models import Base, User, Session, Message, Feedback, UploadedFile, UserMemoryProfile, Task
 
 __all__ = [
     "get_db",
@@ -10,6 +10,6 @@ __all__ = [
     "Message",
     "Feedback",
     "UploadedFile",
-    "UserMemory",
+    "UserMemoryProfile",
     "Task",
 ]

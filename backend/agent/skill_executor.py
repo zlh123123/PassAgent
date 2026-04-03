@@ -58,7 +58,7 @@ def _infer_graphical_mode(text: str) -> str | None:
         return "image"
     if any(keyword in text for keyword in ("地图位置因子", "地图密码", "位置密码", "地理位置因子", "地图", "位置")):
         return "map"
-    if any(keyword in text for keyword in ("富文本标记", "文本标记", "样式标记", "富文本")):
+    if any(keyword in text for keyword in ("富文本标记", "文本标记", "样式标记", "富文本", "文本", "文字")):
         return "richtext"
     return None
 

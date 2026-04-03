@@ -18,10 +18,13 @@ from .session import (
 )
 from .chat import ChatRequest
 from .memory import (
-    MemoryResponse,
-    CreateMemoryRequest,
-    CreateMemoryResponse,
-    MemoriesListResponse,
+    MemorySectionResponse,
+    MemoryProfileResponse,
+    SaveMemoryProfileRequest,
+    SaveMemoryProfileResponse,
+    MemoryItemRequest,
+    UpdateMemoryItemRequest,
+    MemoryOperationResponse,
 )
 from .file import FileResponse, UploadResponse, FilesListResponse
 
@@ -42,10 +45,13 @@ __all__ = [
     "FeedbackInfo",
     "FeedbackRequest",
     "ChatRequest",
-    "MemoryResponse",
-    "CreateMemoryRequest",
-    "CreateMemoryResponse",
-    "MemoriesListResponse",
+    "MemorySectionResponse",
+    "MemoryProfileResponse",
+    "SaveMemoryProfileRequest",
+    "SaveMemoryProfileResponse",
+    "MemoryItemRequest",
+    "UpdateMemoryItemRequest",
+    "MemoryOperationResponse",
     "FileResponse",
     "UploadResponse",
     "FilesListResponse",

@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { apiGet, apiDelete } from "@/lib/api";
+import { apiDelete, apiGet } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Download } from "lucide-react";
 
 type ConvOption = "all" | "current";
 type ExportFormat = "json" | "csv" | "md";
+type MemoryType = "PREFERENCE" | "FACT" | "CONSTRAINT";
 
 interface ExportMessage {
   message_id: string;
@@ -16,23 +17,32 @@ interface ExportMessage {
   message_type: string;
   created_at: string;
 }
+
 interface ExportSession {
   session_id: string;
   title: string;
   created_at: string;
   messages: ExportMessage[];
 }
-interface ExportMemory {
-  memory_id: string;
-  content: string;
-  memory_type: string;
-  source: string;
-  created_at: string;
+
+interface ExportMemorySection {
+  memory_type: MemoryType;
+  label: string;
+  items: string[];
 }
+
+interface ExportMemoryProfile {
+  content_md: string;
+  sections: ExportMemorySection[];
+  created_at: string;
+  updated_at: string;
+  last_used_at?: string | null;
+}
+
 interface ExportResults {
   exported_at: string;
   sessions?: ExportSession[];
-  memories?: ExportMemory[];
+  memoryProfile?: ExportMemoryProfile;
   settings?: Record<string, unknown>;
 }
 
@@ -46,30 +56,37 @@ function escapeCsvField(value: string): string {
 function convertToCsv(data: ExportResults): string {
   const lines: string[] = [];
 
-  // Messages table
   if (data.sessions?.length) {
     lines.push("session_id,session_title,message_id,message_type,content,created_at");
-    for (const s of data.sessions) {
-      for (const m of s.messages) {
+    for (const session of data.sessions) {
+      for (const message of session.messages) {
         lines.push(
-          [s.session_id, s.title, m.message_id, m.message_type, m.content, m.created_at]
-            .map((v) => escapeCsvField(String(v ?? "")))
+          [session.session_id, session.title, message.message_id, message.message_type, message.content, message.created_at]
+            .map((value) => escapeCsvField(String(value ?? "")))
             .join(","),
         );
       }
     }
   }
 
-  // Memories table
-  if (data.memories?.length) {
-    lines.push(""); // blank separator
-    lines.push("memory_id,memory_type,source,content,created_at");
-    for (const m of data.memories) {
-      lines.push(
-        [m.memory_id, m.memory_type, m.source, m.content, m.created_at]
-          .map((v) => escapeCsvField(String(v ?? "")))
-          .join(","),
-      );
+  if (data.memoryProfile) {
+    lines.push("");
+    lines.push("memory_type,section_label,content,profile_created_at,profile_updated_at,last_used_at");
+    for (const section of data.memoryProfile.sections) {
+      for (const item of section.items) {
+        lines.push(
+          [
+            section.memory_type,
+            section.label,
+            item,
+            data.memoryProfile.created_at,
+            data.memoryProfile.updated_at,
+            data.memoryProfile.last_used_at ?? "",
+          ]
+            .map((value) => escapeCsvField(String(value ?? "")))
+            .join(","),
+        );
+      }
     }
   }
 
@@ -81,34 +98,35 @@ function convertToMarkdown(data: ExportResults): string {
 
   if (data.sessions?.length) {
     parts.push("## 对话记录\n");
-    for (const s of data.sessions) {
-      parts.push(`### ${s.title || "未命名会话"}\n`);
-      parts.push(`- 会话 ID：${s.session_id}`);
-      parts.push(`- 创建时间：${s.created_at}\n`);
-      for (const m of s.messages) {
-        const role = m.message_type === "user" ? "用户" : "助手";
-        parts.push(`**${role}**（${m.created_at}）\n`);
-        parts.push(`${m.content}\n`);
+    for (const session of data.sessions) {
+      parts.push(`### ${session.title || "未命名会话"}\n`);
+      parts.push(`- 会话 ID：${session.session_id}`);
+      parts.push(`- 创建时间：${session.created_at}\n`);
+      for (const message of session.messages) {
+        const role = message.message_type === "user" ? "用户" : "助手";
+        parts.push(`**${role}**（${message.created_at}）\n`);
+        parts.push(`${message.content}\n`);
       }
       parts.push("---\n");
     }
   }
 
-  if (data.memories?.length) {
+  if (data.memoryProfile) {
     parts.push("## 用户记忆\n");
-    parts.push("| ID | 类型 | 来源 | 内容 | 创建时间 |");
-    parts.push("|---|---|---|---|---|");
-    for (const m of data.memories) {
-      const content = m.content.replace(/\|/g, "\\|").replace(/\n/g, " ");
-      parts.push(`| ${m.memory_id} | ${m.memory_type} | ${m.source} | ${content} | ${m.created_at} |`);
+    parts.push(`- 创建时间：${data.memoryProfile.created_at}`);
+    parts.push(`- 最近更新：${data.memoryProfile.updated_at}`);
+    if (data.memoryProfile.last_used_at) {
+      parts.push(`- 最近使用：${data.memoryProfile.last_used_at}`);
     }
+    parts.push("");
+    parts.push(data.memoryProfile.content_md.trim());
     parts.push("");
   }
 
   if (data.settings) {
     parts.push("## 用户设置\n");
-    for (const [k, v] of Object.entries(data.settings)) {
-      parts.push(`- **${k}**：${v}`);
+    for (const [key, value] of Object.entries(data.settings)) {
+      parts.push(`- **${key}**：${value}`);
     }
     parts.push("");
   }
@@ -138,28 +156,28 @@ export function DataPage() {
       };
       const promises: Promise<void>[] = [];
 
-      // 对话
       const convUrl =
         convOption === "current" && currentSessionId
           ? `/api/export/conversations?session_id=${currentSessionId}&format=${format}`
           : `/api/export/conversations?format=${format}`;
       promises.push(
-        apiGet<{ conversations: ExportSession[] }>(convUrl).then((d) => {
-          results.sessions = d.conversations;
+        apiGet<{ conversations: ExportSession[] }>(convUrl).then((data) => {
+          results.sessions = data.conversations;
         }),
       );
 
       if (includeMemories) {
         promises.push(
-          apiGet<{ memories: ExportMemory[] }>("/api/export/memories").then((d) => {
-            results.memories = d.memories;
+          apiGet<{ memory_profile: ExportMemoryProfile }>("/api/export/memories").then((data) => {
+            results.memoryProfile = data.memory_profile;
           }),
         );
       }
+
       if (includeSettings && format !== "csv") {
         promises.push(
-          apiGet<{ settings: Record<string, unknown> }>("/api/export/settings").then((d) => {
-            results.settings = d.settings;
+          apiGet<{ settings: Record<string, unknown> }>("/api/export/settings").then((data) => {
+            results.settings = data.settings;
           }),
         );
       }
@@ -172,23 +190,22 @@ export function DataPage() {
         csv: "text/csv",
         md: "text/markdown",
       };
-      const exportData = results;
+
       let content: string;
       if (format === "csv") {
-        content = convertToCsv(exportData);
+        content = convertToCsv(results);
       } else if (format === "md") {
-        content = convertToMarkdown(exportData);
+        content = convertToMarkdown(results);
       } else {
         content = JSON.stringify(results, null, 2);
       }
-      const blob = new Blob([content], {
-        type: mimeMap[format],
-      });
+
+      const blob = new Blob([content], { type: mimeMap[format] });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `passagent-export-${new Date().toISOString().slice(0, 10)}.${ext}`;
-      a.click();
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `passagent-export-${new Date().toISOString().slice(0, 10)}.${ext}`;
+      anchor.click();
       URL.revokeObjectURL(url);
     } catch {
       // ignore
@@ -214,19 +231,17 @@ export function DataPage() {
     <div className="space-y-6">
       <h3 className="text-base font-medium text-slate-900 dark:text-slate-100">数据管理</h3>
 
-      {/* 导出数据 */}
       <div>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">数据导出</p>
-        <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-4">
-          <div className="flex items-center gap-2 mb-1">
+        <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">数据导出</p>
+        <div className="space-y-4 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+          <div className="mb-1 flex items-center gap-2">
             <Download className="h-4 w-4 text-slate-500" />
             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">导出数据</span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">选择要导出的内容：</p>
 
-          {/* 对话选项 - 互斥单选 */}
           <div className="space-y-2">
-            <label className="flex items-center gap-2.5 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2.5">
               <input
                 type="radio"
                 name="conv"
@@ -236,7 +251,7 @@ export function DataPage() {
               />
               <span className="text-sm text-slate-700 dark:text-slate-300">全部对话记录</span>
             </label>
-            <label className={`flex items-center gap-2.5 cursor-pointer ${!currentSessionId ? "opacity-40" : ""}`}>
+            <label className={`flex cursor-pointer items-center gap-2.5 ${!currentSessionId ? "opacity-40" : ""}`}>
               <input
                 type="radio"
                 name="conv"
@@ -251,92 +266,78 @@ export function DataPage() {
             </label>
           </div>
 
-          {/* 其他选项 - 独立勾选 */}
           <div className="space-y-2">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <Checkbox checked={includeMemories} onCheckedChange={(v) => setIncludeMemories(!!v)} />
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <Checkbox checked={includeMemories} onCheckedChange={(value) => setIncludeMemories(!!value)} />
               <span className="text-sm text-slate-700 dark:text-slate-300">用户记忆</span>
             </label>
-            <label className={`flex items-center gap-2.5 cursor-pointer ${format === "csv" ? "opacity-40" : ""}`}>
+            <label className={`flex cursor-pointer items-center gap-2.5 ${format === "csv" ? "opacity-40" : ""}`}>
               <Checkbox
                 checked={includeSettings}
-                onCheckedChange={(v) => setIncludeSettings(!!v)}
+                onCheckedChange={(value) => setIncludeSettings(!!value)}
                 disabled={format === "csv"}
               />
-              <span className="text-sm text-slate-700 dark:text-slate-300">
-                用户设置{format === "csv" && "（CSV 格式不支持）"}
-              </span>
+              <span className="text-sm text-slate-700 dark:text-slate-300">用户设置</span>
             </label>
           </div>
 
-          {/* 格式选择 */}
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-600 dark:text-slate-400">导出格式：</span>
-            <select
-              value={format}
-              onChange={(e) => {
-                const f = e.target.value as ExportFormat;
-                setFormat(f);
-                if (f === "csv") setIncludeSettings(false);
-              }}
-              className="rounded-md border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-sm bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300"
-            >
-              <option value="json">JSON</option>
-              <option value="csv">CSV</option>
-              <option value="md">Markdown</option>
-            </select>
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500 dark:text-slate-400">导出格式：</p>
+            <div className="flex gap-2">
+              {(["json", "csv", "md"] as ExportFormat[]).map((option) => (
+                <Button
+                  key={option}
+                  size="sm"
+                  variant={format === option ? "default" : "outline"}
+                  onClick={() => setFormat(option)}
+                >
+                  {option.toUpperCase()}
+                </Button>
+              ))}
+            </div>
           </div>
 
-          <Button
-            onClick={handleExport}
-            disabled={exporting}
-            className="w-full"
-            size="sm"
-          >
-            {exporting ? "导出中..." : "导出"}
+          <Button onClick={handleExport} disabled={exporting} className="w-full">
+            {exporting ? "导出中..." : "开始导出"}
           </Button>
         </div>
       </div>
 
-      {/* 清除对话 */}
-      <div className="border-t border-dashed border-slate-200 dark:border-slate-700 pt-5">
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-          删除全部会话及消息记录，不可恢复。
-        </p>
-        {!confirmClear ? (
-          <Button
-            variant="outline"
-            className="w-full text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950"
-            size="sm"
-            onClick={() => setConfirmClear(true)}
-          >
-            清除所有对话
-          </Button>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-xs text-red-500">此操作不可撤销，确定要清除所有对话吗？</p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={() => setConfirmClear(false)}
-              >
-                取消
-              </Button>
-              <Button
-                size="sm"
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
-                onClick={handleClearConversations}
-                disabled={clearingConversations}
-              >
-                {clearingConversations ? "清除中..." : "确认清除"}
-              </Button>
+      <div>
+        <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">清理数据</p>
+        <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+            这里只会清空对话记录，不会删除你的账户与记忆档案。
+          </p>
+          {!confirmClear ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+              onClick={() => setConfirmClear(true)}
+            >
+              清空全部对话
+            </Button>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-red-500">确认要清空全部对话记录吗？此操作不可撤销。</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => setConfirmClear(false)}>
+                  取消
+                </Button>
+                <Button
+                  size="sm"
+                  className="flex-1 bg-red-600 text-white hover:bg-red-700"
+                  onClick={handleClearConversations}
+                  disabled={clearingConversations}
+                >
+                  {clearingConversations ? "清空中..." : "确认清空"}
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-
     </div>
   );
 }

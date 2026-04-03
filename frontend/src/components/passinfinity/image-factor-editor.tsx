@@ -56,12 +56,12 @@ export function ImageFactorEditor({ factor, presets, onChange, onRemove }: Props
   }
 
   return (
-    <div className="rounded border border-slate-200 bg-white p-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-4">
-        <p className="text-sm font-medium text-slate-700">
+        <p className="text-sm text-slate-500">
           选择图片后点击添加记忆点；启用网格后自动吸附到 5×5 格心。
         </p>
-        <Button variant="outline" size="sm" onClick={onRemove}>
+        <Button variant="outline" size="sm" className="shrink-0 text-slate-500 hover:text-rose-600 hover:border-rose-200" onClick={onRemove}>
           <Trash2 className="mr-1.5 h-3.5 w-3.5" />
           移除
         </Button>
@@ -77,10 +77,10 @@ export function ImageFactorEditor({ factor, presets, onChange, onRemove }: Props
                   key={preset.src}
                   type="button"
                   onClick={() => setField("src", preset.src)}
-                  className={`overflow-hidden rounded border text-left transition ${
+                  className={`overflow-hidden rounded-lg border text-left transition ${
                     selected
-                      ? "border-slate-900 shadow-sm"
-                      : "border-slate-200 hover:border-slate-300"
+                      ? "border-transparent ring-2 ring-violet-500 shadow-md"
+                      : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
                   }`}
                 >
                   <div className="aspect-[16/9] bg-slate-100">
@@ -100,10 +100,12 @@ export function ImageFactorEditor({ factor, presets, onChange, onRemove }: Props
               value={customUrl}
               onChange={(e) => setCustomUrl(e.target.value)}
               placeholder="或输入远程图片 URL"
+              className="text-sm"
             />
             <Button
               type="button"
               variant="outline"
+              className="shrink-0"
               onClick={() => {
                 if (customUrl.trim()) setField("src", customUrl.trim());
               }}
@@ -150,7 +152,7 @@ export function ImageFactorEditor({ factor, presets, onChange, onRemove }: Props
             <div
               ref={containerRef}
               onClick={handleImageClick}
-              className="relative aspect-[16/9] overflow-hidden rounded border border-slate-200 bg-slate-100"
+              className="relative aspect-[16/9] cursor-crosshair overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-inner"
             >
               {factor.src ? (
                 <>
@@ -172,7 +174,7 @@ export function ImageFactorEditor({ factor, presets, onChange, onRemove }: Props
                   {factor.points.map((point, index) => (
                     <div
                       key={`${point.x}-${point.y}-${index}`}
-                      className="pointer-events-none absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-xs font-semibold text-white shadow-lg"
+                      className="pointer-events-none absolute flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-violet-600 text-xs font-bold text-white shadow-lg"
                       style={{
                         left: `${point.x * 100}%`,
                         top: `${point.y * 100}%`,
@@ -192,19 +194,20 @@ export function ImageFactorEditor({ factor, presets, onChange, onRemove }: Props
           </div>
         </div>
 
-        <div className="space-y-3 rounded border border-slate-200 bg-slate-50 p-3">
+        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
           <div className="space-y-2">
-            <Label htmlFor={`title-${factor.image_id}`}>标题</Label>
+            <Label htmlFor={`title-${factor.image_id}`} className="text-xs font-semibold uppercase tracking-wider text-slate-400">标题</Label>
             <Input
               id={`title-${factor.image_id}`}
               value={factor.title}
               onChange={(e) => setField("title", e.target.value)}
               placeholder="例如：城市草图"
+              className="text-sm"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={`tags-${factor.image_id}`}>标签</Label>
+            <Label htmlFor={`tags-${factor.image_id}`} className="text-xs font-semibold uppercase tracking-wider text-slate-400">标签</Label>
             <Input
               id={`tags-${factor.image_id}`}
               value={tagText}
@@ -218,17 +221,18 @@ export function ImageFactorEditor({ factor, presets, onChange, onRemove }: Props
                 )
               }
               placeholder="landmark, travel"
+              className="text-sm"
             />
-            <p className="text-xs text-slate-500">用英文逗号分隔，便于后续解释。</p>
+            <p className="text-xs text-slate-400">用英文逗号分隔，便于后续解释。</p>
           </div>
 
-          <div className="rounded border border-slate-200 bg-white p-3">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">摘要</p>
-            <div className="mt-3 space-y-2 text-sm text-slate-600">
-              <p>已选图片：{factor.src ? "是" : "否"}</p>
+          <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">摘要</p>
+            <div className="mt-2.5 space-y-1.5 text-xs text-slate-500">
+              <p>已选图片：{factor.src ? <span className="text-emerald-600">是</span> : <span className="text-slate-400">否</span>}</p>
               <p>模式：{factor.use_grid ? "网格点选" : "自由点选"}</p>
-              <p>记忆点数量：{factor.points.length}</p>
-              <p>标签：{factor.tags.length > 0 ? factor.tags.join(", ") : "未设置"}</p>
+              <p>记忆点：<span className="font-semibold text-slate-700">{factor.points.length}</span> 个</p>
+              <p>标签：{factor.tags.length > 0 ? factor.tags.join(", ") : <span className="text-slate-400">未设置</span>}</p>
             </div>
           </div>
         </div>

@@ -3,8 +3,9 @@ import json
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session as DBSession
 
+from agent.memory.profile import ensure_memory_profile, memory_sections_to_payload, parse_memory_profile
 from database.connection import get_db
-from database.models import User, Session as SessionModel, Message, UserMemory
+from database.models import User, Session as SessionModel, Message
 from utils.deps import get_current_user
 
 router = APIRouter(prefix="/api/export", tags=["export"])
@@ -52,23 +53,16 @@ def export_memories(
     user: User = Depends(get_current_user),
     db: DBSession = Depends(get_db),
 ):
-    memories = (
-        db.query(UserMemory)
-        .filter(UserMemory.user_id == user.user_id)
-        .order_by(UserMemory.created_at.desc())
-        .all()
-    )
+    profile = ensure_memory_profile(db, user.user_id)
+    sections, _ = parse_memory_profile(profile.content_md)
     return {
-        "memories": [
-            {
-                "memory_id": m.memory_id,
-                "content": m.content,
-                "memory_type": m.memory_type,
-                "source": m.source or "auto",
-                "created_at": m.created_at,
-            }
-            for m in memories
-        ]
+        "memory_profile": {
+            "content_md": profile.content_md,
+            "sections": memory_sections_to_payload(sections),
+            "created_at": profile.created_at,
+            "updated_at": profile.updated_at,
+            "last_used_at": profile.last_used_at,
+        }
     }
 
 

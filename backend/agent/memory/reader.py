@@ -1,77 +1,49 @@
-"""记忆读取：全量偏好/约束 + 语义检索事实 + 访问追踪 + 过期标记"""
+"""记忆读取：从 markdown 记忆档案中提取结构化记忆。"""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import re
 
 from sqlalchemy.orm import Session as DBSession
 
-from database.models import UserMemory
-from agent.memory.embedding import (
-    get_embedding,
-    bytes_to_embedding,
-    cosine_similarity,
+from agent.memory.profile import (
+    ensure_memory_profile,
+    parse_memory_profile,
+    touch_memory_profile,
 )
 
-# 语义检索返回的最大 FACT 条数
 TOP_K = 8
-# 相似度阈值，低于此值不返回
-SIMILARITY_THRESHOLD = 0.45
-# PREFERENCE/CONSTRAINT 的相关性过滤阈值（更宽松）；条数少时全量返回
-PREF_SIMILARITY_THRESHOLD = 0.25
-PREF_FULL_RETURN_LIMIT = 8   # 偏好/约束总数 ≤ 此值时全量返回
-PREF_TOP_K = 12              # 超过上限时按相关性取 top-k
-# 记忆过期天数（超过此天数未访问标记为 stale）
-STALE_DAYS = 90
 
 
-def _now_iso() -> str:
-    from utils.timezone import beijing_now_iso
-    return beijing_now_iso()
+def _query_terms(text: str) -> tuple[set[str], set[str]]:
+    lowered = (text or "").lower()
+    english = set(re.findall(r"[a-z0-9]{2,}", lowered))
+    chinese = set(re.findall(r"[\u4e00-\u9fff]", lowered))
+    return english, chinese
 
 
-def _is_expired(last_accessed: str | None, created: str | None) -> bool:
-    """判断记忆是否超过 STALE_DAYS 天未被访问。"""
-    from utils.timezone import beijing_now
-    ref = last_accessed or created
-    if not ref:
-        return False
-    try:
-        ts = datetime.fromisoformat(ref)
-        if ts.tzinfo is None:
-            from utils.timezone import BEIJING_TZ
-            ts = ts.replace(tzinfo=BEIJING_TZ)
-        return beijing_now() - ts > timedelta(days=STALE_DAYS)
-    except (ValueError, TypeError):
-        return False
+def _score_fact(query: str, content: str) -> int:
+    query_lower = (query or "").strip().lower()
+    content_lower = (content or "").lower()
+    if not query_lower or not content_lower:
+        return 0
+
+    score = 0
+    if query_lower in content_lower or content_lower in query_lower:
+        score += 4
+
+    query_en, query_zh = _query_terms(query_lower)
+    content_en, content_zh = _query_terms(content_lower)
+    score += len(query_en & content_en) * 2
+    score += len(query_zh & content_zh)
+    return score
 
 
-def _touch_memories(db: DBSession, memories: list[UserMemory]) -> None:
-    """刷新被命中记忆的 last_accessed_at 和 access_count。"""
-    now = _now_iso()
-    for m in memories:
-        m.last_accessed_at = now
-        m.access_count = (m.access_count or 0) + 1
-        # 被访问后清除 stale 标记
-        if m.is_stale:
-            m.is_stale = 0
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-
-
-def _mark_stale(db: DBSession, memories: list[UserMemory]) -> None:
-    """将超期未访问的记忆标记为 is_stale=1。"""
-    changed = False
-    for m in memories:
-        if not m.is_stale and _is_expired(m.last_accessed_at, m.created_at):
-            m.is_stale = 1
-            changed = True
-    if changed:
-        try:
-            db.commit()
-        except Exception:
-            db.rollback()
+def _to_dict(content: str, memory_type: str) -> dict:
+    return {
+        "content": content,
+        "memory_type": memory_type,
+        "is_stale": False,
+    }
 
 
 async def retrieve_memory(
@@ -81,109 +53,36 @@ async def retrieve_memory(
 ) -> list[dict]:
     """检索用户记忆。
 
-    策略：
-    1. 先获取 query embedding
-    2. PREFERENCE / CONSTRAINT：
-       - 总数 ≤ PREF_FULL_RETURN_LIMIT 时全量返回
-       - 超过时按语义相关性过滤（阈值 PREF_SIMILARITY_THRESHOLD），取 top PREF_TOP_K
-    3. FACT：语义检索 top-k（阈值 SIMILARITY_THRESHOLD）；embedding 不可用回退关键词匹配
-    4. 命中的记忆刷新 last_accessed_at、access_count += 1
-    5. 顺便标记超期未访问的记忆为 stale
-    6. stale 记忆在返回结果中带上标记，供 Agent 主动询问用户确认
-
-    Returns:
-        [{"memory_id": ..., "content": ..., "memory_type": ..., "source": ..., "is_stale": ...}, ...]
+    当前策略：
+    - 偏好 / 约束始终全量返回
+    - 事实优先按关键词粗排；若事实很少则直接全量返回
+    - 文档级记录 last_used_at，避免单条阈值与访问计数
     """
-    all_memories = (
-        db.query(UserMemory)
-        .filter(UserMemory.user_id == user_id)
-        .all()
-    )
+    profile = ensure_memory_profile(db, user_id)
+    sections, _ = parse_memory_profile(profile.content_md)
 
-    if not all_memories:
-        return []
+    prefs = sections["PREFERENCE"]
+    facts = sections["FACT"]
+    constraints = sections["CONSTRAINT"]
 
-    # 顺便标记超期记忆
-    _mark_stale(db, all_memories)
-
-    # 先获取 query embedding（偏好过滤和事实检索共用）
-    query_vec = await get_embedding(query)
-
-    results: list[dict] = []
-    hit_memories: list[UserMemory] = []
-    facts: list[UserMemory] = []
-    prefs_constraints: list[UserMemory] = []
-
-    for m in all_memories:
-        if m.memory_type in ("PREFERENCE", "CONSTRAINT"):
-            prefs_constraints.append(m)
-        else:
-            facts.append(m)
-
-    # 1) 偏好和约束：少量全量返回，多量按相关性过滤
-    if len(prefs_constraints) <= PREF_FULL_RETURN_LIMIT or query_vec is None:
-        for m in prefs_constraints:
-            results.append(_to_dict(m))
-            hit_memories.append(m)
-    else:
-        scored_pc: list[tuple[float, UserMemory]] = []
-        for m in prefs_constraints:
-            if m.embedding:
-                mem_vec = bytes_to_embedding(m.embedding)
-                score = cosine_similarity(query_vec, mem_vec)
-                if score >= PREF_SIMILARITY_THRESHOLD:
-                    scored_pc.append((score, m))
-            else:
-                # 无 embedding 的偏好/约束始终保留
-                results.append(_to_dict(m))
-                hit_memories.append(m)
-        scored_pc.sort(key=lambda x: x[0], reverse=True)
-        for _, m in scored_pc[:PREF_TOP_K]:
-            results.append(_to_dict(m))
-            hit_memories.append(m)
+    results = [_to_dict(item, "PREFERENCE") for item in prefs]
+    results.extend(_to_dict(item, "CONSTRAINT") for item in constraints)
 
     if not facts:
-        _touch_memories(db, hit_memories)
+        if results:
+            touch_memory_profile(db, profile)
         return results
 
-    # 2) 对 FACT 做语义检索
-    if query_vec is not None:
-        # 向量检索
-        scored: list[tuple[float, UserMemory]] = []
-        for m in facts:
-            if m.embedding:
-                mem_vec = bytes_to_embedding(m.embedding)
-                score = cosine_similarity(query_vec, mem_vec)
-                if score >= SIMILARITY_THRESHOLD:
-                    scored.append((score, m))
-        scored.sort(key=lambda x: x[0], reverse=True)
-        for _, m in scored[:TOP_K]:
-            results.append(_to_dict(m))
-            hit_memories.append(m)
+    if not query.strip() or len(facts) <= 6:
+        selected_facts = facts
     else:
-        # embedding 不可用，回退到关键词匹配（按字符级别支持中文）
-        query_chars = set(query.replace(" ", ""))
-        matched: list[UserMemory] = []
-        for m in facts:
-            content = m.content or ""
-            # 子串匹配或字符集交集
-            if query.lower() in content.lower() or len(query_chars & set(content)) >= 2:
-                matched.append(m)
-        for m in matched[:TOP_K]:
-            results.append(_to_dict(m))
-            hit_memories.append(m)
+        scored_facts = [(_score_fact(query, content), content) for content in facts]
+        scored_facts.sort(key=lambda item: item[0], reverse=True)
+        selected_facts = [content for score, content in scored_facts if score > 0][:TOP_K]
 
-    # 3) 刷新被命中记忆的访问时间
-    _touch_memories(db, hit_memories)
+    results.extend(_to_dict(item, "FACT") for item in selected_facts)
+
+    if results:
+        touch_memory_profile(db, profile)
 
     return results
-
-
-def _to_dict(m: UserMemory) -> dict:
-    return {
-        "memory_id": m.memory_id,
-        "content": m.content,
-        "memory_type": m.memory_type,
-        "source": m.source or "auto",
-        "is_stale": bool(m.is_stale),
-    }

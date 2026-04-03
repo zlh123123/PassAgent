@@ -137,7 +137,11 @@ export default function SessionPage() {
                 const path = pendingOpen?.path;
                 setDialogOpen(false);
                 setPendingOpen(null);
-                if (path) router.push(path);
+                if (path) {
+                  const returnTo = `/chat/${sessionId}`;
+                  const separator = path.includes("?") ? "&" : "?";
+                  router.push(`${path}${separator}returnTo=${encodeURIComponent(returnTo)}`);
+                }
               }}
             >
               去看看

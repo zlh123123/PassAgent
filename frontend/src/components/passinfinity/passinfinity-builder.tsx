@@ -56,12 +56,6 @@ const STYLE_OPTIONS: { value: RichTextStyle; label: string }[] = [
   { value: "strikethrough", label: "删除线" },
 ];
 
-const TABS: { mode: BuilderMode; label: string }[] = [
-  { mode: "image", label: "图片记忆点" },
-  { mode: "map", label: "地图位置" },
-  { mode: "richtext", label: "富文本标记" },
-];
-
 function makeId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -94,17 +88,28 @@ function inferMode(draft: PassInfinityDraft): BuilderMode {
   return "richtext";
 }
 
-interface Props {
-  mode?: BuilderMode;
+function buildBuilderPath(
+  mode: BuilderMode,
+  options?: { artifactId?: string | null; returnTo?: string | null },
+) {
+  const params = new URLSearchParams();
+  if (options?.artifactId) params.set("artifactId", options.artifactId);
+  if (options?.returnTo) params.set("returnTo", options.returnTo);
+  const query = params.toString();
+  return `/lab/passinfinity/${mode}${query ? `?${query}` : ""}`;
 }
 
-export function PassInfinityBuilder({ mode: initialMode }: Props) {
+interface Props {
+  mode: BuilderMode;
+}
+
+export function PassInfinityBuilder({ mode }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { token, isLoading: authLoading } = useAuth();
   const artifactId = searchParams.get("artifactId");
+  const returnTo = searchParams.get("returnTo") || "/chat";
 
-  const [mode, setMode] = useState<BuilderMode>(initialMode ?? "image");
   const [draft, setDraft] = useState<PassInfinityDraft>(() => createEmptyDraft(mode));
   const [analysis, setAnalysis] = useState<PassInfinityAnalysis | null>(null);
   const [artifacts, setArtifacts] = useState<PassInfinityArtifact[]>([]);
@@ -119,7 +124,15 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
       getPassInfinityArtifact(artifactId)
         .then((artifact) => {
           const inferredMode = inferMode(artifact.normalized_content);
-          setMode(inferredMode);
+          if (inferredMode !== mode) {
+            router.replace(
+              buildBuilderPath(inferredMode, {
+                artifactId: artifact.artifact_id,
+                returnTo,
+              }),
+            );
+            return;
+          }
           setDraft(artifact.normalized_content);
           setAnalysis({
             normalized_content: artifact.normalized_content,
@@ -132,7 +145,16 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
         })
         .finally(() => setLoadingArtifact(false));
     }
-  }, [artifactId, token]);
+  }, [artifactId, mode, returnTo, router, token]);
+
+  useEffect(() => {
+    if (!artifactId) {
+      setDraft(createEmptyDraft(mode));
+      setAnalysis(null);
+      setSaveMessage("");
+      setPageError("");
+    }
+  }, [artifactId, mode]);
 
   useEffect(() => {
     if (!token) {
@@ -155,14 +177,6 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
     }, 300);
     return () => window.clearTimeout(timer);
   }, [draft]);
-
-  function switchMode(next: BuilderMode) {
-    setMode(next);
-    setDraft(createEmptyDraft(next));
-    setSaveMessage("");
-    setPageError("");
-    router.replace("/lab/passinfinity");
-  }
 
   function updateDraft(patch: Partial<PassInfinityDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
@@ -194,7 +208,12 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
         encoded_text: artifact.encoded_text,
         policy_result: artifact.policy_result,
       });
-      router.replace(`/lab/passinfinity?artifactId=${artifact.artifact_id}`);
+      router.replace(
+        buildBuilderPath(inferredMode, {
+          artifactId: artifact.artifact_id,
+          returnTo,
+        }),
+      );
       setSaveMessage("已保存，agent 现在可以读取。");
     } catch (error) {
       setSaveMessage(error instanceof Error ? error.message : "保存失败");
@@ -206,39 +225,35 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
   const warnings = analysis?.policy_result.warnings ?? [];
   const valid = analysis?.policy_result.valid ?? false;
 
+  const modeMeta = {
+    image: { label: "图片记忆点", badge: "bg-violet-100 text-violet-700 border-violet-200" },
+    map: { label: "地图位置因子", badge: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+    richtext: { label: "富文本标记", badge: "bg-amber-100 text-amber-700 border-amber-200" },
+  }[mode];
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white text-slate-900">
       {/* 顶栏 */}
-      <header className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-3">
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-semibold text-slate-900">PassInfinity</span>
-          <nav className="flex items-center gap-1">
-            {TABS.map((tab) => (
-              <button
-                key={tab.mode}
-                type="button"
-                onClick={() => switchMode(tab.mode)}
-                className={`rounded px-3 py-1.5 text-sm transition ${
-                  mode === tab.mode
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+      <header className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white/80 px-5 py-2.5 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold tracking-tight text-slate-900">PassInfinity</span>
+          <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${modeMeta.badge}`}>
+            {modeMeta.label}
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
-          <Link href="/chat">
-            <Button variant="outline" size="sm">回到对话</Button>
+          <Link href="/lab/passinfinity">
+            <Button variant="outline" size="sm" className="text-slate-600 hover:text-slate-900">返回选择页</Button>
+          </Link>
+          <Link href={returnTo}>
+            <Button variant="outline" size="sm" className="text-slate-600 hover:text-slate-900">回到对话</Button>
           </Link>
           <Button
             size="sm"
             onClick={handleSave}
             disabled={saving || authLoading || !valid}
-            className="bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-40"
+            className="bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-30"
           >
             <Save className="mr-1.5 h-3.5 w-3.5" />
             {saving ? "保存中…" : "保存"}
@@ -286,7 +301,7 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
               <button
                 type="button"
                 onClick={() => updateDraft({ images: [...draft.images, createEmptyImageFactor()] })}
-                className="w-full rounded border border-dashed border-slate-300 py-2 text-sm text-slate-500 hover:border-slate-400 hover:text-slate-700"
+                className="w-full rounded-lg border border-dashed border-slate-300 py-2.5 text-sm text-slate-400 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-600"
               >
                 + 再加一张图片
               </button>
@@ -336,7 +351,11 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
                     {STYLE_OPTIONS.map((option) => (
                       <label
                         key={option.value}
-                        className="flex cursor-pointer items-center gap-2 rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition ${
+                          draft.rich_text.styles.includes(option.value)
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
                       >
                         <Checkbox
                           checked={draft.rich_text.styles.includes(option.value)}
@@ -353,31 +372,31 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
         </div>
 
         {/* 右侧边栏 */}
-        <aside className="flex w-64 shrink-0 flex-col gap-0 overflow-y-auto border-l border-slate-200">
+        <aside className="flex w-64 shrink-0 flex-col gap-0 overflow-y-auto border-l border-slate-100 bg-slate-50/50">
           {/* 结果预览 */}
-          <div className="border-b border-slate-200 p-4">
-            <p className="mb-2 text-xs font-medium text-slate-500">编码预览</p>
-            <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-50 p-2 text-xs leading-5 text-slate-700">
+          <div className="border-b border-slate-100 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">编码预览</p>
+            <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-white p-2.5 text-xs leading-5 text-slate-600 shadow-inner ring-1 ring-slate-100">
               {analysis?.encoded_text || "等待输入…"}
             </pre>
           </div>
 
           {/* 状态 */}
-          <div className="border-b border-slate-200 p-4">
-            <p className="mb-2 text-xs font-medium text-slate-500">状态</p>
+          <div className="border-b border-slate-100 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">状态</p>
             <div
-              className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
-                valid ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                valid ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
               }`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${valid ? "bg-emerald-500" : "bg-amber-400"}`} />
               {valid ? "可保存" : "还需补充"}
             </div>
             {analysis?.policy_result.summary && (
-              <p className="mt-2 text-xs leading-5 text-slate-600">{analysis.policy_result.summary}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{analysis.policy_result.summary}</p>
             )}
             {analysis?.policy_result.factors_used && analysis.policy_result.factors_used.length > 0 && (
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-slate-400">
                 启用：{analysis.policy_result.factors_used.join(", ")}
               </p>
             )}
@@ -385,11 +404,11 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
 
           {/* 警告 */}
           {warnings.length > 0 && (
-            <div className="border-b border-slate-200 p-4">
-              <p className="mb-2 text-xs font-medium text-slate-500">提示</p>
+            <div className="border-b border-slate-100 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">提示</p>
               <div className="space-y-1.5">
                 {warnings.map((w, i) => (
-                  <p key={i} className="text-xs leading-5 text-amber-700">{w}</p>
+                  <p key={i} className="rounded bg-amber-50 px-2 py-1 text-xs leading-5 text-amber-700">{w}</p>
                 ))}
               </div>
             </div>
@@ -397,20 +416,20 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
 
           {/* 保存信息 */}
           {(saveMessage || pageError) && (
-            <div className="border-b border-slate-200 p-4">
-              {saveMessage && <p className="text-xs text-slate-700">{saveMessage}</p>}
-              {pageError && <p className="text-xs text-rose-600">{pageError}</p>}
+            <div className="border-b border-slate-100 p-4">
+              {saveMessage && <p className="rounded bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">{saveMessage}</p>}
+              {pageError && <p className="rounded bg-rose-50 px-2 py-1.5 text-xs text-rose-600">{pageError}</p>}
             </div>
           )}
 
           {/* 登录提示 */}
           {!token && (
-            <div className="border-b border-slate-200 p-4">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <LockKeyhole className="h-3.5 w-3.5 shrink-0" />
+            <div className="border-b border-slate-100 p-4">
+              <div className="flex items-start gap-1.5 text-xs text-slate-400">
+                <LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>登录后才能保存，agent 只会读取你自己的结果。</span>
               </div>
-              <Link href="/auth/login" className="mt-2 block">
+              <Link href="/auth/login" className="mt-2.5 block">
                 <Button variant="outline" size="sm" className="w-full text-xs">去登录</Button>
               </Link>
             </div>
@@ -418,7 +437,7 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
 
           {/* 已保存列表 */}
           <div className="flex-1 p-4">
-            <p className="mb-2 text-xs font-medium text-slate-500">已保存</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">已保存</p>
             {!token && (
               <p className="text-xs text-slate-400">登录后显示</p>
             )}
@@ -434,19 +453,23 @@ export function PassInfinityBuilder({ mode: initialMode }: Props) {
                     key={artifact.artifact_id}
                     type="button"
                     onClick={() => {
-                      setMode(inferredMode);
                       setDraft(artifact.normalized_content);
                       setAnalysis({
                         normalized_content: artifact.normalized_content,
                         encoded_text: artifact.encoded_text,
                         policy_result: artifact.policy_result,
                       });
-                      router.replace(`/lab/passinfinity?artifactId=${artifact.artifact_id}`);
+                      router.replace(
+                        buildBuilderPath(inferredMode, {
+                          artifactId: artifact.artifact_id,
+                          returnTo,
+                        }),
+                      );
                     }}
-                    className={`group w-full rounded border p-2.5 text-left text-xs transition ${
+                    className={`group w-full rounded-lg border p-2.5 text-left text-xs transition ${
                       isActive
-                        ? "border-slate-900 bg-slate-900 text-white"
-                        : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                     }`}
                   >
                     <p className={`truncate font-medium ${isActive ? "text-white" : "text-slate-800"}`}>

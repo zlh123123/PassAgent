@@ -156,35 +156,35 @@ export function MapFactorEditor({ locations, onChange }: Props) {
   }
 
   return (
-    <div className="rounded border border-slate-200 bg-white p-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-4">
-        <p className="text-sm text-slate-600">点击地图落点即可加入位置因子，保存前可逐条改名。</p>
-        <Button type="button" variant="outline" size="sm" onClick={() => onChange([])} disabled={locations.length === 0}>
+        <p className="text-sm text-slate-500">点击地图落点即可加入位置因子，保存前可逐条改名。</p>
+        <Button type="button" variant="outline" size="sm" className="shrink-0 text-slate-500 hover:text-rose-600 hover:border-rose-200" onClick={() => onChange([])} disabled={locations.length === 0}>
           清空
         </Button>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="overflow-hidden rounded border border-slate-200">
+        <div className="overflow-hidden rounded-lg border border-slate-200 shadow-inner">
           <div ref={containerRef} className="h-[380px] w-full bg-slate-100" />
         </div>
 
-        <div className="rounded border border-slate-200 bg-slate-50 p-3">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-600">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+          <div className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
             <MapPinned className="h-3.5 w-3.5" />
             已添加位置
           </div>
 
           <div className="space-y-2">
             {locations.length === 0 && (
-              <p className="py-4 text-center text-xs text-slate-400">
+              <p className="py-6 text-center text-xs text-slate-400">
                 点击左侧地图开始
               </p>
             )}
 
             {locations.map((location, index) => (
-              <div key={location.location_id} className="flex items-start gap-2 rounded border border-slate-200 bg-white p-2">
-                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-medium text-white">
+              <div key={location.location_id} className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">
                   {index + 1}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -195,7 +195,7 @@ export function MapFactorEditor({ locations, onChange }: Props) {
                     placeholder="位置名称"
                     className="h-7 text-xs"
                   />
-                  <p className="mt-1 text-xs text-slate-400">
+                  <p className="mt-1 font-mono text-xs text-slate-400">
                     {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
                   </p>
                 </div>
@@ -203,7 +203,7 @@ export function MapFactorEditor({ locations, onChange }: Props) {
                   type="button"
                   variant="outline"
                   size="icon"
-                  className="h-7 w-7 shrink-0"
+                  className="h-7 w-7 shrink-0 text-slate-400 hover:border-rose-200 hover:text-rose-500"
                   onClick={() => removeLocation(location.location_id)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
