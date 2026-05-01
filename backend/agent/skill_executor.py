@@ -13,6 +13,7 @@ import logging
 from openai import AsyncOpenAI
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+from agent.graphical_intent import infer_graphical_mode
 from agent.state import PassAgentState
 from agent.skills import SKILL_REGISTRY, load_skill_prompt
 from agent.tools.definitions import get_tools_for_skill
@@ -53,16 +54,6 @@ def _recent_texts(state: PassAgentState, limit: int = 6) -> str:
     return "\n".join(texts)
 
 
-def _infer_graphical_mode(text: str) -> str | None:
-    if any(keyword in text for keyword in ("图片记忆点", "图片密码", "图片选点", "图片因子", "图像因子", "图片")):
-        return "image"
-    if any(keyword in text for keyword in ("地图位置因子", "地图密码", "位置密码", "地理位置因子", "地图", "位置")):
-        return "map"
-    if any(keyword in text for keyword in ("富文本标记", "文本标记", "样式标记", "富文本", "文本", "文字")):
-        return "richtext"
-    return None
-
-
 def _maybe_short_circuit_graphical_mode(
     state: PassAgentState,
     step_skill: str,
@@ -90,11 +81,11 @@ def _maybe_short_circuit_graphical_mode(
             "todo_list": todo_list,
         }
 
-    mode = _infer_graphical_mode(latest_text)
+    mode = infer_graphical_mode(latest_text)
     if mode is None and any(keyword in latest_text for keyword in ("开链接", "打开链接", "链接", "开页面", "打开页面", "跳转", "进入页面", "去看看")):
-        mode = _infer_graphical_mode(recent_context)
+        mode = infer_graphical_mode(recent_context)
     if mode is None:
-        mode = _infer_graphical_mode((current_step.get("description", "") or "").lower())
+        mode = infer_graphical_mode((current_step.get("description", "") or "").lower())
     if mode is None:
         mode = "select"
 
@@ -181,10 +172,20 @@ def _build_context_message(state: PassAgentState, current_step: dict) -> str:
 
     # 用户记忆
     if state.get("memories"):
-        prefs = [m["content"] for m in state["memories"] if m.get("memory_type") == "PREFERENCE"]
-        constraints = [m["content"] for m in state["memories"] if m.get("memory_type") == "CONSTRAINT"]
+        prefs = [
+            ("[自动] " if m.get("source") == "AUTO" else "") + m["content"]
+            for m in state["memories"] if m.get("memory_type") == "PREFERENCE"
+        ]
+        constraints = [
+            ("[自动] " if m.get("source") == "AUTO" else "") + m["content"]
+            for m in state["memories"] if m.get("memory_type") == "CONSTRAINT"
+        ]
         facts = [
-            ("[待确认] " + m["content"] if m.get("is_stale") else m["content"])
+            (
+                ("[待确认] " if m.get("is_stale") else "")
+                + ("[自动] " if m.get("source") == "AUTO" else "")
+                + m["content"]
+            )
             for m in state["memories"] if m.get("memory_type") == "FACT"
         ]
         mem_parts = []

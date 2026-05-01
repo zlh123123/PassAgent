@@ -10,6 +10,7 @@ import logging
 from openai import AsyncOpenAI
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+from agent.graphical_intent import infer_graphical_mode, is_graphical_intent_text
 from agent.state import PassAgentState
 from agent.skills import SKILL_REGISTRY, VALID_SKILLS
 
@@ -67,25 +68,6 @@ TYPE_ROLE_MAP = {
     "tool": "tool",
 }
 
-_GRAPHICAL_KEYWORDS = (
-    "passinfinity",
-    "图片密码",
-    "图片选点",
-    "图片记忆点",
-    "图片",
-    "图形口令",
-    "图像因子",
-    "地图密码",
-    "位置密码",
-    "地理位置因子",
-    "地图位置因子",
-    "地图",
-    "富文本标记",
-    "文本标记",
-    "样式标记",
-    "文本",
-    "文字",
-)
 _MFA_HINTS = ("多因子认证", "多因素认证", "mfa")
 _CLASSIC_MFA_HINTS = (
     "otp",
@@ -112,12 +94,6 @@ _ARTIFACT_READ_HINTS = (
     "方案",
 )
 _OPEN_PAGE_HINTS = ("开链接", "打开链接", "链接", "开页面", "打开页面", "跳转", "进入页面", "去看看")
-
-_MODE_KEYWORDS = {
-    "image": ("图片记忆点", "图片密码", "图片选点", "图片因子", "图像因子", "图片"),
-    "map": ("地图位置因子", "地图密码", "位置密码", "地理位置因子", "地图", "位置"),
-    "richtext": ("富文本标记", "文本标记", "样式标记", "富文本", "文本", "文字"),
-}
 
 _GRAPHICAL_RESPONSE_HINT = (
     "当前用户是在了解 PassInfinity，但还没有明确选择图片记忆点、地图位置因子或富文本标记。"
@@ -148,14 +124,6 @@ def _get_recent_message_texts(state: PassAgentState, limit: int = 6) -> list[str
     return texts
 
 
-def _detect_mode(text: str) -> str | None:
-    lowered = text.lower()
-    for mode, keywords in _MODE_KEYWORDS.items():
-        if any(keyword in lowered for keyword in keywords):
-            return mode
-    return None
-
-
 def _build_todo(skill: str, items: list[tuple[str, str | None]]) -> list[dict]:
     todo_list = []
     for index, (description, tool_name) in enumerate(items, start=1):
@@ -177,14 +145,12 @@ def _match_graphical_mode(state: PassAgentState) -> tuple[str, list[dict]] | Non
         return None
 
     recent_texts = [item.lower() for item in _get_recent_message_texts(state)]
-    recent_context = "\n".join(recent_texts)
-
-    mentions_graphical = any(keyword in text for keyword in _GRAPHICAL_KEYWORDS)
+    mentions_graphical = is_graphical_intent_text(text)
     mentions_mfa = any(keyword in text for keyword in _MFA_HINTS)
     mentions_classic_mfa = any(keyword in text for keyword in _CLASSIC_MFA_HINTS)
     mentions_experience = any(keyword in text for keyword in _EXPERIENCE_HINTS)
     mentions_open_page = any(keyword in text for keyword in _OPEN_PAGE_HINTS)
-    recent_graphical = any(keyword in recent_context for keyword in _GRAPHICAL_KEYWORDS)
+    recent_graphical = any(is_graphical_intent_text(item) for item in recent_texts)
 
     if (
         not mentions_graphical
@@ -206,9 +172,15 @@ def _match_graphical_mode(state: PassAgentState) -> tuple[str, list[dict]] | Non
             ),
         )
 
-    mode = _detect_mode(text)
+    mode = infer_graphical_mode(text)
     if mode is None and mentions_open_page:
-        mode = _detect_mode(recent_context)
+        for item in reversed(recent_texts):
+            mode = infer_graphical_mode(item)
+            if mode is not None:
+                break
+
+    if mode is None and mentions_open_page and recent_graphical:
+        mode = "select"
 
     if mode is None and (mentions_graphical or mentions_mfa):
         mode = "select"

@@ -13,6 +13,14 @@ import string
 
 from agent.graph import register_tool
 from agent.state import PassAgentState
+from agent.tools.generation.passphrase_tool import generate_passphrase
+from agent.tools.generation.preference_profile import (
+    default_passphrase_options,
+    default_pronounceable_options,
+    default_random_constraints,
+    resolve_generation_preference,
+)
+from agent.tools.generation.pronounceable_tool import generate_pronounceable
 
 # Leet speak 映射（用于种子词变换）
 _LEET_MAP = {
@@ -147,22 +155,77 @@ def _generate_random(constraints: dict) -> list[dict]:
     return candidates
 
 
+def _merge_constraints(base: dict, overrides: dict) -> dict:
+    merged = dict(base)
+    for key, value in overrides.items():
+        merged[key] = value
+    return merged
+
+
 @register_tool("generate_password")
 async def generate_password_tool(state: PassAgentState) -> dict:
     """基于种子词和约束条件生成口令候选。"""
     params = state.get("action_params", {})
     seeds = params.get("seeds", [])
-    constraints = params.get("constraints", {})
+    constraints = dict(params.get("constraints", {}) or {})
+    pref = resolve_generation_preference(state, params)
+    effective_constraints = _merge_constraints(
+        default_random_constraints(pref),
+        constraints,
+    )
+
+    strategy = "seed_based" if seeds else "random"
 
     if seeds:
-        candidates = _generate_from_seeds(seeds, constraints)
+        candidates = _generate_from_seeds(seeds, effective_constraints)
+    elif not constraints:
+        if pref["profile"] == "most_memorable":
+            strategy = "passphrase"
+            defaults = default_passphrase_options(pref)
+            candidates = [
+                {
+                    **result,
+                    "password": result["passphrase"],
+                    "method": "passphrase",
+                }
+                for result in [
+                    generate_passphrase(
+                        word_count=defaults["word_count"],
+                        separator=defaults["separator"],
+                        capitalize=capitalize,
+                        add_number=add_number,
+                    )
+                    for capitalize, add_number in [
+                        (defaults["capitalize"], defaults["add_number"]),
+                        (True, defaults["add_number"]),
+                        (True, True),
+                    ]
+                ]
+            ]
+        elif pref["profile"] == "prefer_memorability":
+            strategy = "pronounceable"
+            defaults = default_pronounceable_options(pref)
+            candidates = [
+                generate_pronounceable(
+                    length=defaults["length"],
+                    add_digit=defaults["add_digit"],
+                    add_special=defaults["add_special"],
+                )
+                for _ in range(5)
+            ]
+        else:
+            candidates = _generate_random(effective_constraints)
     else:
-        candidates = _generate_random(constraints)
+        candidates = _generate_random(effective_constraints)
 
     return {
         "_tool_result": {
             "candidates": candidates,
             "count": len(candidates),
             "has_seeds": bool(seeds),
+            "strategy": strategy,
+            "preference_profile": pref["label"],
+            "effective_security_weight": pref["effective_weight"],
+            "effective_constraints": effective_constraints if strategy in {"seed_based", "random"} else {},
         }
     }

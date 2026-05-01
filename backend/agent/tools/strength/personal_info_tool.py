@@ -68,6 +68,7 @@ def check_personal_info(password: str, memories: list[dict] | None = None) -> di
     for mem in memories:
         keywords = _extract_keywords_from_memory(mem)
         memory_type = mem.get("memory_type", "FACT")
+        source = mem.get("source", "MANUAL")
 
         for kw in keywords:
             if len(kw) < 2:
@@ -85,6 +86,7 @@ def check_personal_info(password: str, memories: list[dict] | None = None) -> di
                     "keyword": kw,
                     "match_type": "exact",
                     "memory_type": memory_type,
+                    "source": source,
                     "memory_content": mem.get("content", "")[:50],
                 })
             # leet speak 还原后匹配
@@ -94,6 +96,7 @@ def check_personal_info(password: str, memories: list[dict] | None = None) -> di
                     "keyword": kw,
                     "match_type": "leet_speak",
                     "memory_type": memory_type,
+                    "source": source,
                     "memory_content": mem.get("content", "")[:50],
                 })
 

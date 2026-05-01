@@ -19,7 +19,7 @@ from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 logger = logging.getLogger(__name__)
 
 EXTRACT_PROMPT = """\
-你是 PassAgent 的记忆整理器。你要维护一份很短的用户记忆档案。
+你是 PassAgent 的记忆整理器。你只负责维护用户记忆文档中的「Agent 自动提炼」区域。
 
 ## 记忆类型
 - preferences: 用户稳定偏好
@@ -27,14 +27,15 @@ EXTRACT_PROMPT = """\
 - constraints: 明确约束
 
 ## 总目标
-1. 只保留稳定、长期有用、对口令生成/恢复/风险分析有帮助的信息
+1. 只保留稳定、长期有用、对口令生成/恢复/风险分析/PassInfinity 有帮助的信息
 2. 记忆必须简短，避免冗长解释
 3. 每条尽量是一句短句
 4. 每个 section 最多 8 条
-5. 不要记录临时指令、一次性任务、寒暄
+5. 不要记录临时指令、一次性任务、寒暄、文件全文
 6. 绝不存储明文密码、密码片段、哈希、验证码
-7. 发现旧信息被新信息覆盖时，直接保留最新版本
-8. 如果本轮对话没有值得写入的新长期信息，就不要更新
+7. 用户手动添加区域绝不能修改，也不要复制成自动记忆
+8. 如果本轮对话没有值得写入的新长期信息，或自动记忆区无需变化，就不要更新
+9. 输出 should_update=true 时，三个数组必须表示「Agent 自动提炼」区的完整新版本
 
 ## 输出格式
 严格输出 JSON：
@@ -60,7 +61,7 @@ async def extract_and_save_memories(
     user_message: str,
     assistant_message: str,
 ) -> list[dict]:
-    """从一轮对话中提取记忆并更新 markdown 档案。"""
+    """从一轮对话中提取自动记忆并更新 markdown 档案。"""
     if not user_message or not assistant_message:
         return []
 
@@ -69,7 +70,10 @@ async def extract_and_save_memories(
     current_sections, _ = parse_memory_profile(profile.content_md)
 
     user_content = (
-        f"【当前记忆文档】\n{profile.content_md}\n\n"
+        "【当前用户手动添加区】\n"
+        f"{json.dumps(current_sections['MANUAL'], ensure_ascii=False)}\n\n"
+        "【当前 Agent 自动提炼区】\n"
+        f"{json.dumps(current_sections['AUTO'], ensure_ascii=False)}\n\n"
         f"【本轮用户消息】\n{user_message}\n\n"
         f"【本轮助手回复】\n{assistant_message}"
     )
@@ -99,9 +103,12 @@ async def extract_and_save_memories(
         return []
 
     sections = normalize_memory_sections({
-        "PREFERENCE": extracted.get("preferences", current_sections["PREFERENCE"]),
-        "FACT": extracted.get("facts", current_sections["FACT"]),
-        "CONSTRAINT": extracted.get("constraints", current_sections["CONSTRAINT"]),
+        "MANUAL": current_sections["MANUAL"],
+        "AUTO": {
+            "PREFERENCE": extracted.get("preferences", current_sections["AUTO"]["PREFERENCE"]),
+            "FACT": extracted.get("facts", current_sections["AUTO"]["FACT"]),
+            "CONSTRAINT": extracted.get("constraints", current_sections["AUTO"]["CONSTRAINT"]),
+        },
     })
     new_content = render_memory_profile(sections)
 
@@ -115,9 +122,14 @@ async def extract_and_save_memories(
         return []
 
     saved: list[dict] = []
-    for memory_type, items in sections.items():
+    for memory_type, items in sections["AUTO"].items():
         saved.extend(
-            {"content": item, "memory_type": memory_type, "is_stale": False}
+            {
+                "content": item,
+                "memory_type": memory_type,
+                "source": "AUTO",
+                "is_stale": False,
+            }
             for item in items
         )
     return saved

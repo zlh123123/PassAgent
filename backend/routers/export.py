@@ -58,7 +58,8 @@ def export_memories(
     return {
         "memory_profile": {
             "content_md": profile.content_md,
-            "sections": memory_sections_to_payload(sections),
+            "manual_sections": memory_sections_to_payload(sections["MANUAL"]),
+            "auto_sections": memory_sections_to_payload(sections["AUTO"]),
             "created_at": profile.created_at,
             "updated_at": profile.updated_at,
             "last_used_at": profile.last_used_at,

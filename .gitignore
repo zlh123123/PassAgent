@@ -2,7 +2,7 @@
 /backend/data
 /backend/storage
 /backend/uploads
-eval/data
+eval/*
 .DS_Store
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -24,6 +24,7 @@ from .memory import (
     SaveMemoryProfileResponse,
     MemoryItemRequest,
     UpdateMemoryItemRequest,
+    PromoteMemoryItemRequest,
     MemoryOperationResponse,
 )
 from .file import FileResponse, UploadResponse, FilesListResponse
@@ -51,6 +52,7 @@ __all__ = [
     "SaveMemoryProfileResponse",
     "MemoryItemRequest",
     "UpdateMemoryItemRequest",
+    "PromoteMemoryItemRequest",
     "MemoryOperationResponse",
     "FileResponse",
     "UploadResponse",

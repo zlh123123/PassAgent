@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Trash2 } from "lucide-react";
 
 type MemoryType = "PREFERENCE" | "FACT" | "CONSTRAINT";
+type MemorySource = "MANUAL" | "AUTO";
 
 interface MemorySection {
   memory_type: MemoryType;
@@ -16,7 +17,8 @@ interface MemorySection {
 
 interface MemoryProfile {
   content_md: string;
-  sections: MemorySection[];
+  manual_sections: MemorySection[];
+  auto_sections: MemorySection[];
   created_at: string;
   updated_at: string;
   last_used_at?: string | null;
@@ -25,6 +27,7 @@ interface MemoryProfile {
 interface MemoryListItem {
   content: string;
   memory_type: MemoryType;
+  source: MemorySource;
 }
 
 const memoryTypeMeta: Record<
@@ -44,6 +47,16 @@ const memoryTypeMeta: Record<
   },
 };
 
+function flattenSections(sections: MemorySection[], source: MemorySource): MemoryListItem[] {
+  return sections.flatMap((section) =>
+    section.items.map((item) => ({
+      content: item,
+      memory_type: section.memory_type,
+      source,
+    })),
+  );
+}
+
 export function MemoryPage() {
   const [profile, setProfile] = useState<MemoryProfile | null>(null);
   const [loading, setLoading] = useState(false);
@@ -54,7 +67,7 @@ export function MemoryPage() {
   const memoryPlaceholders: Record<MemoryType, string> = {
     FACT: "例如：我的小猫叫哈吉米",
     PREFERENCE: "例如：偏好 14-16 位密码",
-    CONSTRAINT: "例如：工作密码必须 90 天轮换",
+    CONSTRAINT: "例如：学校系统密码必须 90 天轮换",
   };
 
   const fetchProfile = useCallback(async () => {
@@ -74,13 +87,10 @@ export function MemoryPage() {
   }, [fetchProfile]);
 
   const memories = useMemo<MemoryListItem[]>(
-    () =>
-      profile?.sections.flatMap((section) =>
-        section.items.map((item) => ({
-          content: item,
-          memory_type: section.memory_type,
-        })),
-      ) ?? [],
+    () => [
+      ...flattenSections(profile?.manual_sections ?? [], "MANUAL"),
+      ...flattenSections(profile?.auto_sections ?? [], "AUTO"),
+    ],
     [profile],
   );
 
@@ -90,6 +100,7 @@ export function MemoryPage() {
       await apiPost("/api/memories/items", {
         content: newMemory.trim(),
         memory_type: newMemoryType,
+        source: "MANUAL",
       });
       setNewMemory("");
       await fetchProfile();
@@ -98,10 +109,10 @@ export function MemoryPage() {
     }
   };
 
-  const handleDelete = async (memoryType: MemoryType, content: string) => {
+  const handleDelete = async (memory: MemoryListItem) => {
     try {
       await apiDelete(
-        `/api/memories/items?memory_type=${encodeURIComponent(memoryType)}&content=${encodeURIComponent(content)}`,
+        `/api/memories/items?memory_type=${encodeURIComponent(memory.memory_type)}&content=${encodeURIComponent(memory.content)}&source=${encodeURIComponent(memory.source)}`,
       );
       await fetchProfile();
     } catch {
@@ -111,7 +122,7 @@ export function MemoryPage() {
 
   const handleClearAll = async () => {
     try {
-      await apiDelete("/api/memories");
+      await apiDelete("/api/memories?scope=all");
       setConfirmClearAll(false);
       await fetchProfile();
     } catch {
@@ -141,9 +152,9 @@ export function MemoryPage() {
           onChange={(e) => setNewMemory(e.target.value)}
           placeholder={memoryPlaceholders[newMemoryType]}
           className="flex-1"
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          onKeyDown={(e) => e.key === "Enter" && void handleAdd()}
         />
-        <Button size="icon" variant="outline" onClick={handleAdd} disabled={!newMemory.trim()}>
+        <Button size="icon" variant="outline" onClick={() => void handleAdd()} disabled={!newMemory.trim()}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>
@@ -162,12 +173,17 @@ export function MemoryPage() {
         <div className="space-y-2">
           {memories.map((memory) => (
             <div
-              key={`${memory.memory_type}-${memory.content}`}
+              key={`${memory.source}-${memory.memory_type}-${memory.content}`}
               className="group flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-sm dark:border-slate-700/80 dark:bg-slate-900/60"
             >
               <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium tracking-[0.01em] text-slate-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-400">
                 {memoryTypeMeta[memory.memory_type].label}
               </span>
+              {memory.source === "AUTO" && (
+                <span className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium tracking-[0.01em] text-sky-600 dark:border-sky-900 dark:bg-sky-950/60 dark:text-sky-300">
+                  自动
+                </span>
+              )}
               <div className="min-w-0 flex-1">
                 <p className="text-sm leading-6 text-slate-700 dark:text-slate-300">{memory.content}</p>
               </div>
@@ -175,7 +191,7 @@ export function MemoryPage() {
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 shrink-0 rounded-full opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() => handleDelete(memory.memory_type, memory.content)}
+                onClick={() => void handleDelete(memory)}
               >
                 <Trash2 className="h-3.5 w-3.5 text-slate-400" />
               </Button>
@@ -205,7 +221,7 @@ export function MemoryPage() {
                 <Button variant="outline" size="sm" className="flex-1" onClick={() => setConfirmClearAll(false)}>
                   取消
                 </Button>
-                <Button size="sm" className="flex-1 bg-red-600 text-white hover:bg-red-700" onClick={handleClearAll}>
+                <Button size="sm" className="flex-1 bg-red-600 text-white hover:bg-red-700" onClick={() => void handleClearAll()}>
                   确认清除
                 </Button>
               </div>

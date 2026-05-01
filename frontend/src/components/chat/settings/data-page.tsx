@@ -33,7 +33,8 @@ interface ExportMemorySection {
 
 interface ExportMemoryProfile {
   content_md: string;
-  sections: ExportMemorySection[];
+  manual_sections: ExportMemorySection[];
+  auto_sections: ExportMemorySection[];
   created_at: string;
   updated_at: string;
   last_used_at?: string | null;
@@ -71,21 +72,27 @@ function convertToCsv(data: ExportResults): string {
 
   if (data.memoryProfile) {
     lines.push("");
-    lines.push("memory_type,section_label,content,profile_created_at,profile_updated_at,last_used_at");
-    for (const section of data.memoryProfile.sections) {
-      for (const item of section.items) {
-        lines.push(
-          [
-            section.memory_type,
-            section.label,
-            item,
-            data.memoryProfile.created_at,
-            data.memoryProfile.updated_at,
-            data.memoryProfile.last_used_at ?? "",
-          ]
-            .map((value) => escapeCsvField(String(value ?? "")))
-            .join(","),
-        );
+    lines.push("memory_source,memory_type,section_label,content,profile_created_at,profile_updated_at,last_used_at");
+    for (const [source, sections] of [
+      ["MANUAL", data.memoryProfile.manual_sections],
+      ["AUTO", data.memoryProfile.auto_sections],
+    ] as const) {
+      for (const section of sections) {
+        for (const item of section.items) {
+          lines.push(
+            [
+              source,
+              section.memory_type,
+              section.label,
+              item,
+              data.memoryProfile.created_at,
+              data.memoryProfile.updated_at,
+              data.memoryProfile.last_used_at ?? "",
+            ]
+              .map((value) => escapeCsvField(String(value ?? "")))
+              .join(","),
+          );
+        }
       }
     }
   }
@@ -119,6 +126,23 @@ function convertToMarkdown(data: ExportResults): string {
       parts.push(`- 最近使用：${data.memoryProfile.last_used_at}`);
     }
     parts.push("");
+    parts.push("### 我的记忆\n");
+    for (const section of data.memoryProfile.manual_sections) {
+      parts.push(`#### ${section.label}`);
+      for (const item of section.items) {
+        parts.push(`- ${item}`);
+      }
+      parts.push("");
+    }
+    parts.push("### Agent 自动提炼\n");
+    for (const section of data.memoryProfile.auto_sections) {
+      parts.push(`#### ${section.label}`);
+      for (const item of section.items) {
+        parts.push(`- ${item}`);
+      }
+      parts.push("");
+    }
+    parts.push("### 原始 Markdown\n");
     parts.push(data.memoryProfile.content_md.trim());
     parts.push("");
   }

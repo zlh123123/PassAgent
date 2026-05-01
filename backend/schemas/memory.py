@@ -1,17 +1,23 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
 
+MemoryType = Literal["PREFERENCE", "FACT", "CONSTRAINT"]
+MemorySource = Literal["MANUAL", "AUTO"]
+MemoryClearScope = Literal["all", "manual", "auto"]
+
+
 class MemorySectionResponse(BaseModel):
-    memory_type: str
+    memory_type: MemoryType
     label: str
     items: List[str]
 
 
 class MemoryProfileResponse(BaseModel):
     content_md: str
-    sections: List[MemorySectionResponse]
+    manual_sections: List[MemorySectionResponse]
+    auto_sections: List[MemorySectionResponse]
     created_at: str
     updated_at: str
     last_used_at: Optional[str] = None
@@ -27,13 +33,20 @@ class SaveMemoryProfileResponse(BaseModel):
 
 class MemoryItemRequest(BaseModel):
     content: str
-    memory_type: str
+    memory_type: MemoryType
+    source: MemorySource = "MANUAL"
 
 
 class UpdateMemoryItemRequest(BaseModel):
     old_content: str
     new_content: str
-    memory_type: str
+    memory_type: MemoryType
+    source: MemorySource = "MANUAL"
+
+
+class PromoteMemoryItemRequest(BaseModel):
+    content: str
+    memory_type: MemoryType
 
 
 class MemoryOperationResponse(BaseModel):

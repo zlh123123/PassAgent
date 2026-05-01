@@ -93,8 +93,12 @@ def _build_tool_context(state: PassAgentState) -> str:
         for mem in state["memories"]:
             m_type = mem.get("memory_type", "FACT")
             content = mem.get("content", "")
+            source = mem.get("source", "MANUAL")
             is_stale = mem.get("is_stale", False)
-            label = f"[待确认] {content}（长期未核实）" if is_stale else content
+            source_label = "手动" if source == "MANUAL" else "自动"
+            label = f"[{source_label}] {content}"
+            if is_stale:
+                label = f"[待确认] {label}（长期未核实）"
             if m_type == "PREFERENCE":
                 prefs.append(f"- {label}")
             elif m_type == "CONSTRAINT":

@@ -11,7 +11,10 @@ from agent.memory.profile import (
     touch_memory_profile,
 )
 
-TOP_K = 8
+TOP_K_FACTS = 6
+TOP_K_AUTO_PREFERENCES = 3
+TOP_K_AUTO_CONSTRAINTS = 3
+MANUAL_FACT_BONUS = 3
 
 
 def _query_terms(text: str) -> tuple[set[str], set[str]]:
@@ -21,7 +24,7 @@ def _query_terms(text: str) -> tuple[set[str], set[str]]:
     return english, chinese
 
 
-def _score_fact(query: str, content: str) -> int:
+def _base_score(query: str, content: str) -> int:
     query_lower = (query or "").strip().lower()
     content_lower = (content or "").lower()
     if not query_lower or not content_lower:
@@ -38,12 +41,37 @@ def _score_fact(query: str, content: str) -> int:
     return score
 
 
-def _to_dict(content: str, memory_type: str) -> dict:
+def _to_dict(content: str, memory_type: str, source: str) -> dict:
     return {
         "content": content,
         "memory_type": memory_type,
+        "source": source,
         "is_stale": False,
     }
+
+
+def _select_auto_items(
+    items: list[str],
+    query: str,
+    memory_type: str,
+    top_k: int,
+) -> list[dict]:
+    if not items:
+        return []
+
+    query = (query or "").strip()
+    if not query:
+        return [_to_dict(item, memory_type, "AUTO") for item in items[:top_k]]
+
+    ranked = sorted(
+        enumerate(items),
+        key=lambda pair: (_base_score(query, pair[1]), pair[0]),
+        reverse=True,
+    )
+    return [
+        _to_dict(item, memory_type, "AUTO")
+        for _, item in ranked[:top_k]
+    ]
 
 
 async def retrieve_memory(
@@ -54,33 +82,50 @@ async def retrieve_memory(
     """检索用户记忆。
 
     当前策略：
-    - 偏好 / 约束始终全量返回
-    - 事实优先按关键词粗排；若事实很少则直接全量返回
-    - 文档级记录 last_used_at，避免单条阈值与访问计数
+    - 手动偏好 / 手动约束始终返回
+    - 自动偏好 / 自动约束按 query 粗排，最多各返回 3 条
+    - 事实统一按关键词粗排；query 为空或无关时不返回事实
     """
     profile = ensure_memory_profile(db, user_id)
     sections, _ = parse_memory_profile(profile.content_md)
 
-    prefs = sections["PREFERENCE"]
-    facts = sections["FACT"]
-    constraints = sections["CONSTRAINT"]
+    results: list[dict] = []
+    query = (query or "").strip()
 
-    results = [_to_dict(item, "PREFERENCE") for item in prefs]
-    results.extend(_to_dict(item, "CONSTRAINT") for item in constraints)
+    for item in sections["MANUAL"]["PREFERENCE"]:
+        results.append(_to_dict(item, "PREFERENCE", "MANUAL"))
+    for item in sections["MANUAL"]["CONSTRAINT"]:
+        results.append(_to_dict(item, "CONSTRAINT", "MANUAL"))
 
-    if not facts:
-        if results:
-            touch_memory_profile(db, profile)
-        return results
+    results.extend(
+        _select_auto_items(
+            sections["AUTO"]["PREFERENCE"],
+            query,
+            "PREFERENCE",
+            TOP_K_AUTO_PREFERENCES,
+        )
+    )
+    results.extend(
+        _select_auto_items(
+            sections["AUTO"]["CONSTRAINT"],
+            query,
+            "CONSTRAINT",
+            TOP_K_AUTO_CONSTRAINTS,
+        )
+    )
 
-    if not query.strip() or len(facts) <= 6:
-        selected_facts = facts
-    else:
-        scored_facts = [(_score_fact(query, content), content) for content in facts]
-        scored_facts.sort(key=lambda item: item[0], reverse=True)
-        selected_facts = [content for score, content in scored_facts if score > 0][:TOP_K]
+    if query:
+        fact_candidates: list[tuple[int, int, str, str]] = []
+        for source, bonus in (("MANUAL", MANUAL_FACT_BONUS), ("AUTO", 0)):
+            for index, content in enumerate(sections[source]["FACT"]):
+                score = _base_score(query, content) + bonus
+                if score <= bonus:
+                    continue
+                fact_candidates.append((score, index, source, content))
 
-    results.extend(_to_dict(item, "FACT") for item in selected_facts)
+        fact_candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        for _, _, source, content in fact_candidates[:TOP_K_FACTS]:
+            results.append(_to_dict(content, "FACT", source))
 
     if results:
         touch_memory_profile(db, profile)

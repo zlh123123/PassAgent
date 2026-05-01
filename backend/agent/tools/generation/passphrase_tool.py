@@ -10,6 +10,10 @@ import secrets
 
 from agent.graph import register_tool
 from agent.state import PassAgentState
+from agent.tools.generation.preference_profile import (
+    default_passphrase_options,
+    resolve_generation_preference,
+)
 
 # 尝试使用 xkcdpass，如果未安装则使用内置词表
 try:
@@ -209,12 +213,23 @@ def generate_passphrase(
 async def passphrase_generate_tool(state: PassAgentState) -> dict:
     """生成助记短语型口令。"""
     params = state.get("action_params", {})
-    word_count = params.get("word_count", 4)
-    separator = params.get("separator", "-")
+    pref = resolve_generation_preference(state, params)
+    defaults = default_passphrase_options(pref)
+    word_count = params.get("word_count", defaults["word_count"])
+    separator = params.get("separator", defaults["separator"])
 
     # 生成多个候选
     candidates = []
-    for capitalize, add_num in [(False, False), (True, False), (True, True)]:
+    variants = [
+        (defaults["capitalize"], defaults["add_number"]),
+        (True, defaults["add_number"]),
+        (True, True),
+    ]
+    seen_variants: set[tuple[bool, bool]] = set()
+    for capitalize, add_num in variants:
+        if (capitalize, add_num) in seen_variants:
+            continue
+        seen_variants.add((capitalize, add_num))
         result = generate_passphrase(
             word_count=word_count,
             separator=separator,
@@ -228,5 +243,7 @@ async def passphrase_generate_tool(state: PassAgentState) -> dict:
             "candidates": candidates,
             "count": len(candidates),
             "using_xkcdpass": _HAS_XKCDPASS,
+            "preference_profile": pref["label"],
+            "effective_security_weight": pref["effective_weight"],
         }
     }

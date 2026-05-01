@@ -10,6 +10,10 @@ import secrets
 
 from agent.graph import register_tool
 from agent.state import PassAgentState
+from agent.tools.generation.preference_profile import (
+    default_pronounceable_options,
+    resolve_generation_preference,
+)
 
 # 辅音和元音音素组合
 _CONSONANTS = [
@@ -89,14 +93,28 @@ def generate_pronounceable(length: int = 12, add_digit: bool = True, add_special
 async def pronounceable_generate_tool(state: PassAgentState) -> dict:
     """生成可发音的随机口令。"""
     params = state.get("action_params", {})
-    length = params.get("length", 12)
+    pref = resolve_generation_preference(state, params)
+    defaults = default_pronounceable_options(pref)
+
+    length = params.get("length", defaults["length"])
+    add_digit = params.get("add_digit", defaults["add_digit"])
+    add_special = params.get("add_special", defaults["add_special"])
 
     # 生成多个候选
-    candidates = [generate_pronounceable(length=length) for _ in range(5)]
+    candidates = [
+        generate_pronounceable(
+            length=length,
+            add_digit=add_digit,
+            add_special=add_special,
+        )
+        for _ in range(5)
+    ]
 
     return {
         "_tool_result": {
             "candidates": candidates,
             "count": len(candidates),
+            "preference_profile": pref["label"],
+            "effective_security_weight": pref["effective_weight"],
         }
     }
