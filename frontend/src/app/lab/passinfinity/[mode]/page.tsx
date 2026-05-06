@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import {
   PassInfinityBuilder,
@@ -16,5 +17,9 @@ export default async function PassInfinityModePage({
     notFound();
   }
 
-  return <PassInfinityBuilder mode={mode as BuilderMode} />;
+  return (
+    <Suspense fallback={<div className="h-screen bg-slate-50" />}>
+      <PassInfinityBuilder mode={mode as BuilderMode} />
+    </Suspense>
+  );
 }

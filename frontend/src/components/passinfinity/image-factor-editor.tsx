@@ -1,7 +1,5 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import { useMemo, useRef, useState } from "react";
 import { Grid2x2, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";

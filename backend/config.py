@@ -40,8 +40,19 @@ OMNI_MODEL = os.getenv("OMNI_MODEL", "Qwen/Qwen3-Omni-30B-A3B-Instruct")
 # --- Hunter.io（邮箱验证与信息查询） ---
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY", "")
 
-# --- PassGPT ONNX ---
-PASSGPT_MODEL_PATH = os.getenv(
-    "PASSGPT_MODEL_PATH",
-    os.path.join(REPO_ROOT, "models_deploy", "models", "passgpt", "passgpt.onnx"),
+# --- PassTSL ONNX ---
+PASSTSL_MODEL_PATH = os.getenv(
+    "PASSTSL_MODEL_PATH",
+    os.path.join(REPO_ROOT, "models_deploy", "models", "passtsl", "passtsl.onnx"),
 )
+
+# --- Pass2Rule / PTN Transformer ---
+PASS2RULE_MODEL_DIR = os.getenv(
+    "PASS2RULE_MODEL_DIR",
+    os.path.join(REPO_ROOT, "models_deploy", "models", "pass2rule"),
+)
+PASS2RULE_CHECKPOINT_PATH = os.getenv(
+    "PASS2RULE_CHECKPOINT_PATH",
+    os.path.join(PASS2RULE_MODEL_DIR, "best_model.pt"),
+)
+PASS2RULE_DEVICE = os.getenv("PASS2RULE_DEVICE", "auto")

@@ -1,4 +1,4 @@
-"""passgpt_prob 工具：使用 PassGPT ONNX 模型评估口令被猜中的概率。"""
+"""passtsl_prob 工具：使用 PassTSL ONNX 模型评估口令被猜中的概率。"""
 from __future__ import annotations
 
 import math
@@ -9,7 +9,7 @@ from typing import Any
 
 from agent.graph import register_tool
 from agent.state import PassAgentState
-from config import PASSGPT_MODEL_PATH
+from config import PASSTSL_MODEL_PATH
 
 _CLS_TOKEN_ID = 2
 _UNK_TOKEN = "[UNK]"
@@ -82,7 +82,7 @@ def _estimate_guesses(log_prob: float) -> tuple[float, int | None]:
     return guesses_log10, max(1, int(round(math.exp(-log_prob))))
 
 
-class _PassGPTScorer:
+class _PassTSLScorer:
     def __init__(self) -> None:
         self._session = None
         self._input_name = ""
@@ -99,11 +99,11 @@ class _PassGPTScorer:
             if self._session is not None:
                 return np, self._session
 
-            if not os.path.exists(PASSGPT_MODEL_PATH):
-                raise RuntimeError(f"PassGPT 模型文件不存在: {PASSGPT_MODEL_PATH}")
+            if not os.path.exists(PASSTSL_MODEL_PATH):
+                raise RuntimeError(f"PassTSL 模型文件不存在: {PASSTSL_MODEL_PATH}")
 
             providers = ["CPUExecutionProvider"]
-            session = ort.InferenceSession(PASSGPT_MODEL_PATH, providers=providers)
+            session = ort.InferenceSession(PASSTSL_MODEL_PATH, providers=providers)
             self._session = session
             self._input_name = session.get_inputs()[0].name
             self._providers = session.get_providers()
@@ -122,7 +122,7 @@ class _PassGPTScorer:
                 "guesses_estimate": 1,
                 "char_probabilities": [],
                 "backend": self._providers,
-                "model_path": PASSGPT_MODEL_PATH,
+                "model_path": PASSTSL_MODEL_PATH,
                 "guess_estimate_method": "inverse_probability",
                 "latency_ms": 0.0,
             }
@@ -151,18 +151,18 @@ class _PassGPTScorer:
             "guesses_estimate": guesses_estimate,
             "char_probabilities": char_probs,
             "backend": self._providers,
-            "model_path": PASSGPT_MODEL_PATH,
+            "model_path": PASSTSL_MODEL_PATH,
             "guess_estimate_method": "inverse_probability",
             "latency_ms": elapsed_ms,
         }
 
 
-_SCORER = _PassGPTScorer()
+_SCORER = _PassTSLScorer()
 
 
-@register_tool("passgpt_prob")
-async def passgpt_prob_tool(state: PassAgentState) -> dict:
-    """使用 PassGPT ONNX 模型评估口令被猜中的概率。"""
+@register_tool("passtsl_prob")
+async def passtsl_prob_tool(state: PassAgentState) -> dict:
+    """使用 PassTSL ONNX 模型评估口令被猜中的概率。"""
     params = state.get("action_params", {})
     password = params.get("password", "")
 

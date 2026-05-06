@@ -20,7 +20,13 @@ export function middleware(request: NextRequest) {
   // Check for token in cookie (set by client-side code)
   const token = request.cookies.get("token")?.value;
   if (!token) {
-    return NextResponse.redirect(new URL("/auth/login", request.url));
+    const host =
+      request.headers.get("x-forwarded-host") ??
+      request.headers.get("host") ??
+      request.nextUrl.host;
+    const proto = request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", "");
+
+    return NextResponse.redirect(new URL("/auth/login", `${proto}://${host}`));
   }
 
   return NextResponse.next();

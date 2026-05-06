@@ -22,7 +22,7 @@ backend 的环境变量在 `backend/.env`中配置，至少确认下面几项：
 
 ```env
 LLM_BASE_URL="http://127.0.0.1:6006/v1"
-PASSGPT_MODEL_PATH="/你的服务器路径/PassAgent/models_deploy/models/passgpt/passgpt.onnx"
+PASSTSL_MODEL_PATH="/你的服务器路径/PassAgent/models_deploy/models/passtsl/passtsl.onnx"
 ```
 
 如果后端也跑在云服务器上，就不需要再把 `6006` 映射回本地。`6006` 只给云服务器上的 backend 内部访问。

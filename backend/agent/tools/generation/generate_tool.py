@@ -32,6 +32,15 @@ _SPECIAL_CHARS = "!@#$%^&*_+-="
 _DIGITS = string.digits
 _ALL_CHARS = string.ascii_letters + _DIGITS + _SPECIAL_CHARS
 
+_MEMORABILITY_BY_METHOD = {
+    "passphrase": 0.9,
+    "pronounceable": 0.75,
+    "seed_leet_join": 0.65,
+    "initials_fill": 0.55,
+    "seed_expand": 0.6,
+    "random": 0.25,
+}
+
 
 def _leet_transform(word: str) -> str:
     """随机 leet speak 变换：每个可替换字符有 50% 概率被替换。"""
@@ -162,6 +171,93 @@ def _merge_constraints(base: dict, overrides: dict) -> dict:
     return merged
 
 
+def _estimate_security_score(password: str) -> float:
+    charset_size = 0
+    if any(ch.islower() for ch in password):
+        charset_size += 26
+    if any(ch.isupper() for ch in password):
+        charset_size += 26
+    if any(ch.isdigit() for ch in password):
+        charset_size += 10
+    if any(ch in string.punctuation for ch in password):
+        charset_size += len(_SPECIAL_CHARS)
+
+    if charset_size <= 1 or not password:
+        return 0.0
+
+    entropy = len(password) * math.log2(charset_size)
+    return round(min(entropy / 80, 1.0), 3)
+
+
+def _estimate_memorability_score(candidate: dict) -> float:
+    method = candidate.get("method", "random")
+    base = _MEMORABILITY_BY_METHOD.get(method, 0.4)
+    length = len(candidate.get("password", ""))
+    if length > 20:
+        base -= 0.15
+    elif length <= 12:
+        base += 0.05
+    return round(min(max(base, 0.0), 1.0), 3)
+
+
+def _constraint_penalty(password: str, constraints: dict) -> float:
+    penalty = 0.0
+    min_len = constraints.get("min_length")
+    max_len = constraints.get("max_length")
+
+    if min_len and len(password) < int(min_len):
+        penalty += 0.25
+    if max_len and len(password) > int(max_len):
+        penalty += 0.25
+    if constraints.get("require_upper") and not any(ch.isupper() for ch in password):
+        penalty += 0.15
+    if constraints.get("require_lower") and not any(ch.islower() for ch in password):
+        penalty += 0.15
+    if constraints.get("require_digit") and not any(ch.isdigit() for ch in password):
+        penalty += 0.15
+    if constraints.get("require_special") and not any(ch in string.punctuation for ch in password):
+        penalty += 0.15
+
+    allowed_specials = constraints.get("allowed_specials")
+    if allowed_specials:
+        disallowed = [
+            ch for ch in password
+            if ch in string.punctuation and ch not in str(allowed_specials)
+        ]
+        if disallowed:
+            penalty += 0.25
+
+    return round(min(penalty, 1.0), 3)
+
+
+def _score_and_sort_candidates(
+    candidates: list[dict],
+    constraints: dict,
+    security_weight: float,
+) -> list[dict]:
+    scored: list[dict] = []
+    alpha = min(max(float(security_weight), 0.0), 1.0)
+    for candidate in candidates:
+        password = candidate.get("password", "")
+        security_score = _estimate_security_score(password)
+        memorability_score = _estimate_memorability_score(candidate)
+        constraint_penalty = _constraint_penalty(password, constraints)
+        utility_score = (
+            alpha * security_score
+            + (1 - alpha) * memorability_score
+            - constraint_penalty
+        )
+        scored.append({
+            **candidate,
+            "security_score": security_score,
+            "memorability_score": memorability_score,
+            "constraint_penalty": constraint_penalty,
+            "utility_score": round(utility_score, 3),
+        })
+
+    return sorted(scored, key=lambda item: item["utility_score"], reverse=True)
+
+
 @register_tool("generate_password")
 async def generate_password_tool(state: PassAgentState) -> dict:
     """基于种子词和约束条件生成口令候选。"""
@@ -217,6 +313,12 @@ async def generate_password_tool(state: PassAgentState) -> dict:
             candidates = _generate_random(effective_constraints)
     else:
         candidates = _generate_random(effective_constraints)
+
+    candidates = _score_and_sort_candidates(
+        candidates,
+        effective_constraints,
+        pref["effective_weight"],
+    )
 
     return {
         "_tool_result": {

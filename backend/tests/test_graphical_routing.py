@@ -16,6 +16,7 @@ class GraphicalRoutingTestCase(unittest.TestCase):
         self.assertEqual(infer_graphical_mode("可以用地图位置做密码吗"), "map")
         self.assertEqual(infer_graphical_mode("我想试试富文本标记"), "richtext")
         self.assertTrue(is_graphical_intent_text("我想玩一下 PassInfinity"))
+        self.assertTrue(is_graphical_intent_text("我想玩一下图形化口令"))
 
     def test_router_does_not_misroute_generic_requests(self):
         image_state = {
@@ -49,10 +50,11 @@ class GraphicalRoutingTestCase(unittest.TestCase):
 
         self.assertIsNotNone(entry_match)
         self.assertEqual(entry_match[0], "graphical-mode")
-        self.assertIn("介绍 PassInfinity", entry_match[1][0]["description"])
+        self.assertEqual(entry_match[1][0]["tool_name"], "graphical_mode")
+        self.assertIn("因子选择页", entry_match[1][0]["description"])
 
         self.assertIsNotNone(follow_up_match)
-        self.assertEqual(follow_up_match[1][0]["tool_name"], None)
+        self.assertEqual(follow_up_match[1][0]["tool_name"], "graphical_mode")
 
         self.assertIsNotNone(image_match)
         self.assertEqual(image_match[1][0]["tool_name"], "graphical_mode")

@@ -39,6 +39,11 @@ ROUTER_SYSTEM_PROMPT = """\
 - 每个步骤包含：step_id（序号）、description（描述）、tool_name（预计工具，可为 null）
 - multi_skill 时，每个步骤额外标注 skill 字段
 - 涉及口令生成或恢复时，第一步应为 retrieve_memory（检索用户记忆）
+- strength-assessment 且用户提供了待评估口令时，应使用多证据评估链：
+  retrieve_memory → zxcvbn_check → basic_analysis → pattern_detect →
+  weak_list_match → pcfg_analyze → personal_info_check → passtsl_prob → respond
+- 仅当用户提到旧口令、变体、演化、修改规则、可能改成什么等语境时，strength-assessment 才额外加入 pass2rule
+- 如果用户想评估口令但没有提供具体口令，应直接 respond 追问，不要编造 password 参数
 - 最后一步通常是 respond（汇总回复）
 - off_topic 时 todo_list 为空数组
 
@@ -50,10 +55,15 @@ ROUTER_SYSTEM_PROMPT = """\
 {
   "skill": "strength-assessment",
   "todo_list": [
-    {"step_id": 1, "description": "用 zxcvbn 评估熵值", "tool_name": "zxcvbn_check"},
-    {"step_id": 2, "description": "分析字符组成", "tool_name": "basic_analysis"},
-    {"step_id": 3, "description": "检测键盘/日期模式", "tool_name": "pattern_detect"},
-    {"step_id": 4, "description": "汇总结果回复用户", "tool_name": "respond"}
+    {"step_id": 1, "description": "检索用户记忆，获取个人信息与偏好", "tool_name": "retrieve_memory"},
+    {"step_id": 2, "description": "用 zxcvbn 评估熵值", "tool_name": "zxcvbn_check"},
+    {"step_id": 3, "description": "分析字符组成", "tool_name": "basic_analysis"},
+    {"step_id": 4, "description": "检测键盘/日期模式", "tool_name": "pattern_detect"},
+    {"step_id": 5, "description": "匹配弱口令库", "tool_name": "weak_list_match"},
+    {"step_id": 6, "description": "分析 PCFG 结构", "tool_name": "pcfg_analyze"},
+    {"step_id": 7, "description": "结合用户记忆检测个人信息", "tool_name": "personal_info_check"},
+    {"step_id": 8, "description": "用 PassTSL 模型估计可猜测概率", "tool_name": "passtsl_prob"},
+    {"step_id": 9, "description": "融合多来源证据回复用户", "tool_name": "respond"}
   ]
 }
 ```"""
@@ -102,6 +112,40 @@ _GRAPHICAL_RESPONSE_HINT = (
     "不要展开泛泛的 MFA 科普，不要输出技术大段落。"
 )
 
+_STRENGTH_TOOL_NAMES = {
+    "zxcvbn_check",
+    "basic_analysis",
+    "pattern_detect",
+    "weak_list_match",
+    "pcfg_analyze",
+    "personal_info_check",
+    "passtsl_prob",
+    "pass2rule",
+}
+
+_PASS2RULE_HINTS = (
+    "旧密码",
+    "以前",
+    "之前",
+    "原密码",
+    "基础密码",
+    "变体",
+    "变换",
+    "规则",
+    "演化",
+    "改成",
+    "变成",
+    "会变",
+    "会变成",
+    "可能改",
+    "可能变",
+    "容易变",
+    "什么口令",
+    "常用改法",
+    "找回",
+    "恢复",
+)
+
 
 def _get_latest_user_message_text(state: PassAgentState) -> str:
     for msg in reversed(state["messages"]):
@@ -136,6 +180,62 @@ def _build_todo(skill: str, items: list[tuple[str, str | None]]) -> list[dict]:
             "result_summary": "",
         })
     return todo_list
+
+
+def _wants_pass2rule_analysis(text: str) -> bool:
+    lowered = text.lower()
+    return any(hint in lowered for hint in _PASS2RULE_HINTS)
+
+
+def _has_strength_tool(todo_list: list[dict]) -> bool:
+    return any(item.get("tool_name") in _STRENGTH_TOOL_NAMES for item in todo_list)
+
+
+def _looks_like_strength_plan(todo_list: list[dict]) -> bool:
+    if _has_strength_tool(todo_list):
+        return True
+
+    text = "\n".join(
+        str(item.get("description", "")) + "\n" + str(item.get("tool_name", ""))
+        for item in todo_list
+    ).lower()
+    return any(
+        keyword in text
+        for keyword in (
+            "zxcvbn",
+            "熵",
+            "破解",
+            "强度",
+            "字符组成",
+            "键盘",
+            "弱口令",
+            "pcfg",
+            "个人信息",
+            "passtsl",
+            "pass2rule",
+        )
+    )
+
+
+def _build_strength_assessment_todo(
+    latest_text: str,
+    recent_context: str = "",
+) -> list[dict]:
+    trigger_text = f"{latest_text}\n{recent_context}"
+    items: list[tuple[str, str | None]] = [
+        ("检索用户记忆，获取个人信息与偏好", "retrieve_memory"),
+        ("用 zxcvbn 评估口令熵值和破解时间", "zxcvbn_check"),
+        ("分析字符组成、长度、重复和顺序结构", "basic_analysis"),
+        ("检测键盘、拼音、日期等常见模式", "pattern_detect"),
+        ("匹配弱口令库和常见泄露口令", "weak_list_match"),
+        ("分析 PCFG 结构，判断是否属于常见模板", "pcfg_analyze"),
+        ("结合用户记忆检测个人信息命中", "personal_info_check"),
+        ("用 PassTSL 模型估计口令可猜测概率", "passtsl_prob"),
+    ]
+    if _wants_pass2rule_analysis(trigger_text):
+        items.append(("用 Pass2Rule 预测旧口令可能变体和演化规则", "pass2rule"))
+    items.append(("融合多来源证据并回复用户", "respond"))
+    return _build_todo("strength-assessment", items)
 
 
 def _match_graphical_mode(state: PassAgentState) -> tuple[str, list[dict]] | None:
@@ -186,7 +286,7 @@ def _match_graphical_mode(state: PassAgentState) -> tuple[str, list[dict]] | Non
         mode = "select"
 
     description_map = {
-        "select": "介绍 PassInfinity 的三种模式并询问用户选择",
+        "select": "打开 PassInfinity 因子选择页",
         "image": "打开 PassInfinity 页面（图片模式）",
         "map": "打开 PassInfinity 页面（地图模式）",
         "richtext": "打开 PassInfinity 页面（富文本模式）",
@@ -194,14 +294,13 @@ def _match_graphical_mode(state: PassAgentState) -> tuple[str, list[dict]] | Non
     if mode is None:
         return None
 
-    tool_name = None if mode == "select" else "graphical_mode"
     return (
         "graphical-mode",
         _build_todo(
             "graphical-mode",
             [
-                (description_map[mode], tool_name),
-                ("说明如何使用 PassInfinity 页面", "respond") if mode != "select" else ("等待用户选择具体模式", "respond"),
+                (description_map[mode], "graphical_mode"),
+                ("说明如何使用 PassInfinity 页面", "respond"),
             ],
         ),
     )
@@ -377,6 +476,19 @@ async def intent_router_node(state: PassAgentState) -> dict:
             "status": "pending",
             "result_summary": "",
         })
+
+    if skill == "strength-assessment" and _looks_like_strength_plan(todo_list):
+        recent_context = "\n".join(_get_recent_message_texts(state))
+        todo_list = _build_strength_assessment_todo(latest_text, recent_context)
+
+    if skill == "graphical-mode" and not todo_list:
+        todo_list = _build_todo(
+            "graphical-mode",
+            [
+                ("打开 PassInfinity 因子选择页", "graphical_mode"),
+                ("说明如何使用 PassInfinity 页面", "respond"),
+            ],
+        )
 
     # 推送 SSE 事件
     if event_queue is not None:

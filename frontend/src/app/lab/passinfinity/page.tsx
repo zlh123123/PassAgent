@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Compass, ImagePlus, Type } from "lucide-react";
@@ -38,7 +39,7 @@ const ENTRY_CARDS = [
   },
 ];
 
-export default function PassInfinityEntryPage() {
+function PassInfinityEntryContent() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo") || "/chat";
 
@@ -97,5 +98,13 @@ export default function PassInfinityEntryPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PassInfinityEntryPage() {
+  return (
+    <Suspense fallback={<div className="h-screen bg-slate-50" />}>
+      <PassInfinityEntryContent />
+    </Suspense>
   );
 }

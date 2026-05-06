@@ -886,8 +886,8 @@ Response（JSON 格式）:
 | pattern_detect | 键盘模式 + 拼音组合 + 日期模式统一检测（合并原 keyboard_pattern_check、pinyin_check、date_pattern_check） | password | keyboard{}, pinyin{}, date{}, coverage, risk_level | 纯 Python + JSON |
 | weak_list_match | 弱口令库匹配 | password | in_top100, in_top1000, in_rockyou | 内存加载 |
 | pcfg_analyze | PCFG 结构模式分析 | password | structure, is_common_structure | PCFG |
-| passgpt_prob | 口令被猜中概率（GPU 微调模型，待接入） | password | probability, rank_estimate | 微调模型(GPU) |
-| pass2rule | 口令易发生的 hashcat 规则变化（GPU 微调模型，待接入） | password | rules | 微调模型(GPU) |
+| passtsl_prob | 口令被猜中概率（GPU 微调模型，待接入） | password | probability, rank_estimate | 微调模型(GPU) |
+| pass2rule | PTN Transformer 预测旧口令可能演化出的变换规则和候选口令 | password | rules, candidates | PyTorch + best_model.pt |
 | personal_info_check | 结合记忆检测个人信息 | password, memories | contains_personal_info, matched_items | 字符串匹配 |
 
 #### 4.4.2 口令生成类
@@ -1373,8 +1373,8 @@ PassAgent/
 │   │       │   ├── pattern_detect_tool.py        # 键盘模式 + 拼音 + 日期（合并）
 │   │       │   ├── weak_list_tool.py            # 弱口令库匹配
 │   │       │   ├── pcfg_tool.py                 # 结构模式分析
-│   │       │   ├── passgpt_tool.py              # 口令概率（调模型服务，待接入）
-│   │       │   ├── pass2rule_tool.py            # 口令规则生成（调模型服务，待接入）
+│   │       │   ├── passtsl_tool.py              # 口令概率（调模型服务，待接入）
+│   │       │   ├── pass2rule_tool.py            # PTN Transformer 口令规则生成
 │   │       │   └── personal_info_tool.py        # 结合记忆检测个人信息
 │   │       ├── generation/
 │   │       │   ├── __init__.py
@@ -1997,7 +1997,7 @@ components/chat/settings/
 | `rule_generate` | `common_variant_expand` |
 | `date_expand` | 并入 `fragment_combine` |
 
-> 说明：`pass2rule` 仍保留在 function schema 中，但当前运行图未注册实际实现，因此评测集中不把它设为必调或可调依赖。
+> 说明：`pass2rule` 已接入 `models_deploy/models/pass2rule/best_model.pt`，运行时需要后端环境安装 PyTorch。
 
 ## `tool_eval_cases.jsonl` 标注结构
 
@@ -2093,7 +2093,7 @@ components/chat/settings/
 | 编号 | 类型 | 内容 | 位置 |
 |------|------|------|------|
 | 公式1 | 公式 | zxcvbn 熵值计算 $H = \log_2(G)$ | 2.1 口令安全评估方法 |
-| 公式2 | 公式 | PassGPT 口令概率估计 $P(p) = \prod P(c_t \mid c_{<t})$ | 2.1 口令安全评估方法 |
+| 公式2 | 公式 | PassTSL 口令概率估计 $P(p) = \prod P(c_t \mid c_{<t})$ | 2.1 口令安全评估方法 |
 | 公式3 | 公式 | 余弦相似度定义 | 2.x LLM Agent 技术（记忆部分） |
 
 ---
@@ -2129,7 +2129,7 @@ components/chat/settings/
 | 编号 | 类型 | 内容 |
 |------|------|------|
 | 表3 | 表格 | 19 个工具总览表（名称、所属 skill、功能简述、输入、输出） |
-| 公式4 | 公式 | PassGPT 对数概率计算 $\log P(p) = \sum \log P(c_t \mid c_{<t})$ |
+| 公式4 | 公式 | PassTSL 对数概率计算 $\log P(p) = \sum \log P(c_t \mid c_{<t})$ |
 | 表4 | 表格 | Pass2Rule 微调模型评估结果（从已发表论文中引用） |
 | 表5 | 表格 | Hashcat 规则生成微调模型评估结果 |
 | 公式5 | 公式 | k-Anonymity 查询过程 $h = \text{SHA-1}(p),\ \text{prefix} = h[0:5],\ \text{suffix} = h[5:]$ |
@@ -2471,8 +2471,8 @@ C: <分数> | <理由>
 3 & pattern\_detect & 键盘模式、拼音组合、日期模式统一检测（合并原 keyboard\_pattern\_check、pinyin\_check、date\_pattern\_check） \\
 4 & weak\_list\_match & 弱口令库匹配（Top100/Top1000/RockYou） \\
 5 & pcfg\_analyze & PCFG结构模式分析 \\
-6 & passgpt\_prob & 基于PassGPT微调模型的概率估计（待接入） \\
-7 & pass2rule & 基于Pass2Rule模型的规则变换分析（待接入） \\
+6 & passtsl\_prob & 基于PassTSL微调模型的概率估计（待接入） \\
+7 & pass2rule & 基于Pass2Rule/PTN模型的规则变换分析 \\
 8 & personal\_info\_check & 结合用户记忆的个人信息关联检测 \\
 \bottomrule
 \end{tabular}
@@ -2562,6 +2562,4 @@ C: <分数> | <理由>
 43. **新增环境变量**：`HUNTER_API_KEY`（Hunter.io API Key）、`OMNI_BASE_URL`（多模态模型地址）、`OMNI_MODEL`（多模态模型名）
 44. **新增依赖**：`xkcdpass`（passphrase 生成库，有内置 fallback 词表）
 45. **文件树变更**：删除 `charset_tool.py`、`repetition_tool.py`、`keyboard_tool.py`、`pinyin_tool.py`、`date_tool.py`、`strength_verify_tool.py`、`similar_leak_tool.py`、`rule_tool.py`、`date_expand_tool.py`；新增 `basic_analysis_tool.py`、`pattern_detect_tool.py`、`pronounceable_tool.py`
-
-
 

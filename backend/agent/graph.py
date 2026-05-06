@@ -193,8 +193,8 @@ import agent.tools.strength.pattern_detect_tool  # noqa: F401, E402
 import agent.tools.strength.pcfg_tool  # noqa: F401, E402
 import agent.tools.strength.weak_list_tool  # noqa: F401, E402
 import agent.tools.strength.personal_info_tool  # noqa: F401, E402
-import agent.tools.strength.passgpt_tool  # noqa: F401, E402
-# pass2rule_tool 为空桩，待接入模型服务后自动注册
+import agent.tools.strength.passtsl_tool  # noqa: F401, E402
+import agent.tools.strength.pass2rule_tool  # noqa: F401, E402
 
 # 口令生成
 import agent.tools.generation.generate_tool  # noqa: F401, E402

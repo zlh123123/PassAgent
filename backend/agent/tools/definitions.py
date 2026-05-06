@@ -4,7 +4,7 @@
 
 通用：respond, retrieve_memory
 强度评估（8）：zxcvbn_check, basic_analysis, pattern_detect, pcfg_analyze,
-               weak_list_match, personal_info_check, passgpt_prob, pass2rule
+               weak_list_match, personal_info_check, passtsl_prob, pass2rule
 口令生成（5）：generate_password, passphrase_generate, pronounceable_generate,
                fetch_site_policy, multimodal_parse
 泄露检查（3）：hibp_password_check, hibp_email_check, breach_detail
@@ -145,8 +145,8 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "passgpt_prob",
-            "description": "使用 PassGPT ONNX 模型评估口令被猜中的概率，可在后端 CPU 上运行。",
+            "name": "passtsl_prob",
+            "description": "使用 PassTSL ONNX 模型评估口令被猜中的概率，可在后端 CPU 上运行。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -160,11 +160,19 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "pass2rule",
-            "description": "使用 Pass2Rule 模型分析口令容易发生的 hashcat 规则变化。需要 GPU 推理服务。",
+            "description": "使用 Pass2Rule / PTN Transformer 预测旧口令可能演化出的变换规则和候选口令。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "password": {"type": "string", "description": "待分析的口令"}
+                    "password": {"type": "string", "description": "待分析的旧口令或基础口令"},
+                    "top_k": {
+                        "type": "integer",
+                        "description": "返回候选数量，默认 20，最大 50",
+                    },
+                    "include_input": {
+                        "type": "boolean",
+                        "description": "是否把原口令作为候选返回，默认 true",
+                    },
                 },
                 "required": ["password"],
             },

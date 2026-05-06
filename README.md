@@ -26,7 +26,7 @@ PassAgent 是一个基于大语言模型 Agent 的口令安全助手。系统采
 - zxcvbn 熵值评估、字符组成分析、键盘模式检测
 - 弱口令库匹配（Top100 / Top1000 / RockYou）
 - 重复字符检测、PCFG 结构模式分析
-- PassGPT 概率估计、Pass2Rule 规则变换分析
+- PassTSL 概率估计、Pass2Rule 规则变换分析
 - 拼音组合检测、日期模式检测
 - 结合用户记忆的个人信息关联检测
 

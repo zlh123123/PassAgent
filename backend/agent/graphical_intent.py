@@ -4,7 +4,9 @@ from __future__ import annotations
 _GRAPHICAL_EXACT_KEYWORDS = (
     "passinfinity",
     "图形口令",
+    "图形化口令",
     "图形密码",
+    "图形化密码",
     "图片密码",
     "图片选点",
     "图片记忆点",

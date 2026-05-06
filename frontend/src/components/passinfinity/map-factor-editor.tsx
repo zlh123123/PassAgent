@@ -65,11 +65,16 @@ export function MapFactorEditor({ locations, onChange }: Props) {
   const layerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const locationsRef = useRef<LocationFactor[]>(locations);
+  const onChangeRef = useRef(onChange);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     locationsRef.current = locations;
   }, [locations]);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +100,7 @@ export function MapFactorEditor({ locations, onChange }: Props) {
             lat: Number(event.latlng.lat.toFixed(4)),
             lng: Number(event.latlng.lng.toFixed(4)),
           };
-          onChange([...locationsRef.current, nextLocation]);
+          onChangeRef.current([...locationsRef.current, nextLocation]);
         });
 
         mapRef.current = map;

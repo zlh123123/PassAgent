@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from openai import AsyncOpenAI
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
@@ -20,8 +21,36 @@ from agent.tools.definitions import get_tools_for_skill
 
 logger = logging.getLogger(__name__)
 
-MAX_LOOPS = 10
+MAX_LOOPS = 12
 MAX_DUPLICATE_RETRIES = 2
+_PASSWORD_CANDIDATE_RE = re.compile(
+    r"[A-Za-z0-9`~!@#$%^&*()_\-+={}\[\]|\\:;\"'<>,.?/]{4,}"
+)
+_COMMON_NON_PASSWORD_TOKENS = {
+    "passagent",
+    "passinfinity",
+    "pass2rule",
+    "passtsl",
+    "zxcvbn",
+    "pcfg",
+    "pattern",
+    "graph",
+    "password",
+    "http",
+    "https",
+    "api",
+    "agent",
+}
+_FORCED_STRENGTH_TOOLS = {
+    "zxcvbn_check",
+    "basic_analysis",
+    "pattern_detect",
+    "weak_list_match",
+    "pcfg_analyze",
+    "personal_info_check",
+    "passtsl_prob",
+    "pass2rule",
+}
 
 # ---------------------------------------------------------------------------
 # LangGraph 消息类型 → OpenAI 角色映射
@@ -42,6 +71,137 @@ def _latest_user_text(state: PassAgentState) -> str:
             content = msg.content if hasattr(msg, "content") else msg.get("content", "")
             return str(content or "").strip()
     return ""
+
+
+def _message_role(msg) -> str:
+    if hasattr(msg, "type"):
+        return TYPE_ROLE_MAP.get(msg.type, "user")
+    return msg.get("role", "user") if isinstance(msg, dict) else "user"
+
+
+def _message_content(msg) -> str:
+    return str(msg.content if hasattr(msg, "content") else msg.get("content", "") or "")
+
+
+def _is_plausible_password_token(token: str) -> bool:
+    lowered = token.strip("`'\"“”‘’「」『』.,，。:：;；()[]{}").lower()
+    if not lowered or lowered in _COMMON_NON_PASSWORD_TOKENS:
+        return False
+    if lowered.startswith(("http", "www.")):
+        return False
+    return True
+
+
+def _select_password_candidate(candidates: list[str]) -> str:
+    cleaned = [
+        item.strip("`'\"“”‘’「」『』.,，。:：;；()[]{}")
+        for item in candidates
+    ]
+    plausible = [item for item in cleaned if _is_plausible_password_token(item)]
+    if not plausible:
+        return ""
+
+    with_digit_or_symbol = [
+        item for item in plausible
+        if any(ch.isdigit() for ch in item)
+        or any(not ch.isalnum() for ch in item)
+    ]
+    return (with_digit_or_symbol or plausible)[-1]
+
+
+def _extract_password_candidate(text: str) -> str:
+    quoted = re.search(r"[\"'“”‘’「」『』](.+?)[\"'“”‘’「」『』]", text)
+    if quoted:
+        candidate = quoted.group(1).strip()
+        if _is_plausible_password_token(candidate):
+            return candidate
+
+    candidates = _PASSWORD_CANDIDATE_RE.findall(text)
+    return _select_password_candidate(candidates)
+
+
+def _extract_password_from_tool_history(state: PassAgentState) -> str:
+    for item in reversed(state.get("tool_history", [])):
+        params = item.get("params", {})
+        result = item.get("result", {})
+        for value in (
+            params.get("password"),
+            result.get("input_password") if isinstance(result, dict) else None,
+        ):
+            if isinstance(value, str) and _is_plausible_password_token(value):
+                return value
+    return ""
+
+
+def _extract_password_for_strength(state: PassAgentState) -> str:
+    latest = _extract_password_candidate(_latest_user_text(state))
+    if latest:
+        return latest
+
+    from_tools = _extract_password_from_tool_history(state)
+    if from_tools:
+        return from_tools
+
+    messages = list(state.get("messages", []))
+    previous_messages = messages[:-1] if messages else []
+    for role in ("user", "assistant"):
+        for msg in reversed(previous_messages):
+            if _message_role(msg) != role:
+                continue
+            candidate = _extract_password_candidate(_message_content(msg))
+            if candidate:
+                return candidate
+    return ""
+
+
+def _maybe_forced_strength_action(
+    state: PassAgentState,
+    step_skill: str,
+    current_step: dict,
+    todo_list: list[dict],
+) -> dict | None:
+    """Strength assessment follows its planned evidence chain deterministically."""
+    if step_skill != "strength-assessment":
+        return None
+
+    tool_name = current_step.get("tool_name")
+    if not tool_name:
+        return None
+
+    if tool_name == "respond":
+        return {
+            "next_action": "respond",
+            "action_params": {"reasoning": current_step.get("description", "")},
+            "loop_count": state.get("loop_count", 0) + 1,
+            "todo_list": todo_list,
+        }
+
+    latest_text = _latest_user_text(state)
+    if tool_name == "retrieve_memory":
+        return {
+            "next_action": "retrieve_memory",
+            "action_params": {"query": latest_text or "用户口令偏好、个人信息和约束"},
+            "loop_count": state.get("loop_count", 0) + 1,
+            "todo_list": todo_list,
+        }
+
+    if tool_name in _FORCED_STRENGTH_TOOLS:
+        password = _extract_password_for_strength(state)
+        if not password:
+            return {
+                "next_action": "respond",
+                "action_params": {"reasoning": "用户没有提供可评估的具体口令"},
+                "loop_count": state.get("loop_count", 0) + 1,
+                "todo_list": todo_list,
+            }
+        return {
+            "next_action": tool_name,
+            "action_params": {"password": password},
+            "loop_count": state.get("loop_count", 0) + 1,
+            "todo_list": todo_list,
+        }
+
+    return None
 
 
 def _recent_texts(state: PassAgentState, limit: int = 6) -> str:
@@ -371,6 +531,28 @@ async def skill_executor_node(state: PassAgentState) -> dict:
                     },
                 })
             return shortcut_result
+
+        forced_strength_result = _maybe_forced_strength_action(
+            state, step_skill, current_step, todo_list
+        )
+        if forced_strength_result is not None:
+            logger.info(
+                "SkillExecutor forced strength step: %s, params=%s",
+                forced_strength_result["next_action"],
+                forced_strength_result["action_params"],
+            )
+            if event_queue is not None:
+                await event_queue.put({
+                    "event": "agent_step",
+                    "data": {
+                        "node": "skill_executor",
+                        "action": forced_strength_result["next_action"],
+                        "reasoning": current_step.get("description", ""),
+                        "step_index": current_idx + 1,
+                        "total_steps": len(todo_list),
+                    },
+                })
+            return forced_strength_result
 
         # ---------- 已调用指纹集合（去重用） ----------
         existing_keys = _build_existing_keys(state)

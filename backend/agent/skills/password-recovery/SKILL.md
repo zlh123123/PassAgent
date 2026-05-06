@@ -1,20 +1,21 @@
 ---
 name: password-recovery
-description: 根据用户提供的记忆片段，通过排列组合和变体扩展来恢复忘记的口令。当用户忘记密码、只记得密码的部分片段、想找回旧密码时使用。
-allowed-tools: fragment_combine,common_variant_expand
+description: 根据用户提供的记忆片段，通过排列组合、常见变体和 Pass2Rule/PTN 模型来恢复忘记的口令。当用户忘记密码、只记得密码的部分片段、想找回旧密码时使用。
+allowed-tools: fragment_combine,common_variant_expand,pass2rule
 ---
 
 # 口令恢复
 
 ## Quick Start
 
-口令恢复的核心流程是"收集片段 → 组合候选 → 变体扩展"：
+口令恢复的核心流程是"收集片段 → 组合候选 → 变体扩展 / 模型规则预测"：
 
 1. **retrieve_memory** → 获取用户记忆中的个人信息（姓名、生日、宠物名等常用密码素材）
 2. 结合用户提供的线索，提取记忆片段
 3. **fragment_combine**(fragments=[...]) → 排列组合生成基础候选
 4. **common_variant_expand**(base_list=[...]) → 对候选做变体扩展（大小写、leet speak、追加数字等）
-5. **respond** → 展示候选列表供用户辨认
+5. 如果用户提供了明确旧口令或基础口令 → **pass2rule**(password=...) 预测更像真实用户习惯的变换规则
+6. **respond** → 展示候选列表供用户辨认
 
 ## 工具说明
 
@@ -22,6 +23,7 @@ allowed-tools: fragment_combine,common_variant_expand
 |------|------|----------|
 | fragment_combine | 记忆片段排列组合，自动展开年份为多种日期格式 | fragments（必需）、pattern（可选组合提示） |
 | common_variant_expand | hashcat 规则子集变体：大小写、leet speak、追加数字/符号、反转 | base_list（必需） |
+| pass2rule | PTN Transformer 预测旧口令可能演化出的变换规则和候选口令 | password（必需）、top_k（可选） |
 
 ## 决策策略
 
@@ -36,6 +38,7 @@ allowed-tools: fragment_combine,common_variant_expand
 - 片段少（2~3 个）→ 直接 fragment_combine，生成所有排列
 - 片段多（4+ 个）→ 通过 pattern 参数提示组合模式，减少爆炸
 - 用户记得大致结构（如"名字+生日"）→ 传入 pattern 提示
+- 用户记得一个旧密码 / 基础密码，想找现在可能改成什么 → 优先调用 pass2rule
 
 ## Examples
 

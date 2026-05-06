@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LockKeyhole, Save, Trash2 } from "lucide-react";
+import { LockKeyhole, Save } from "lucide-react";
 import { useAuth } from "@/providers/Auth";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
